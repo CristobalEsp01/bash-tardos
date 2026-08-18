@@ -1,7 +1,8 @@
 # SistOpe - Módulo de Gestión de Usuarios y Perfiles
 
 **Asignatura:** INFO198 Sistemas Operativos  
-**Grupo:** Bash-tardos 
+**Grupo:** Bash-tardos.
+
 **Integrantes:** 
 - Maximiliano Araya
 - Cristóbal Espinoza
@@ -22,8 +23,8 @@ Para compilar y ejecutar este proyecto, asegúrate de tener instalado el compila
 Primero, obtén una copia del código y prepara las variables de entorno:
 
 ```bash
-git clone https://github.com/[tu-usuario]/[tu-repo].git
-cd [tu-repo]
+git clone https://github.com/CristobalEsp01/bash-tardos.git
+cd bash-tardos
 cp .env.example .env
 ```
 
