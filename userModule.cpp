@@ -4,6 +4,7 @@
 #include <sstream>
 #include <limits>
 #include <iomanip>
+#include "utils.h"
 
 using namespace std;
 
@@ -69,12 +70,6 @@ static void agregarUsuarioAlArchivo(const Usuario& u, const string& userFile) {
     }
     archivo << usuarioALinea(u) << "\n";
     archivo.close();
-}
-
-// Limpia el buffer de entrada tras usar cin >> algo
-static void limpiarBuffer() {
-    cin.clear();
-    cin.ignore(numeric_limits<streamsize>::max(), '\n');
 }
 
 
