@@ -1,6 +1,9 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
+#include "userModule.h"
+#include "utils.h"
 
 using namespace std;
 
@@ -8,16 +11,14 @@ using namespace std;
 void cargarConfiguracion(string& userFile, string& perfilFile) {
     ifstream archivo(".env");
     string linea;
-    
+
     if (archivo.is_open()) {
         while (getline(archivo, linea)) {
-            // Buscamos la posición del signo '='
             size_t pos = linea.find('=');
             if (pos != string::npos) {
                 string clave = linea.substr(0, pos);
                 string valor = linea.substr(pos + 1);
-                
-                // Asignamos según la clave encontrada
+
                 if (clave == "USER_FILE") userFile = valor;
                 if (clave == "PERFIL_FILE") perfilFile = valor;
             }
@@ -28,17 +29,64 @@ void cargarConfiguracion(string& userFile, string& perfilFile) {
     }
 }
 
+// Menú principal del sistema
+void SistOpe(vector<Usuario>& listaUsuarios, const string& userFile, const string& perfilFile) {
+    int opcion = -1;
+
+    do {
+        cout << "\n======================================\n";
+        cout << "   SISTEMA DE GESTION - MENU PRINCIPAL\n";
+        cout << "======================================\n";
+        cout << "0) Salir del Sistema\n";
+        cout << "1) Administracion de Usuarios\n";
+        cout << "2) Administracion de Perfiles\n";
+        cout << "--------------------------------------\n";
+        cout << "Seleccione una opcion: ";
+        
+        if (!(cin >> opcion)) {
+            cout << "Entrada invalida. Ingrese un numero.\n";
+            limpiarBuffer();
+            continue;
+        }
+        limpiarBuffer();
+
+        switch (opcion) {
+            case 0:
+                cout << "\nCerrando sesion y saliendo del sistema...\n";
+                break;
+
+            case 1:
+                // Llama al CRUD de usuarios implementado en userModule
+                menuGestionUsuarios(listaUsuarios, userFile);
+                break;
+
+            case 2:
+                // Espacio reservado para el módulo de perfiles
+                cout << "\n[INFO] Modulo de Administracion de Perfiles proxima implementacion.\n";
+                // menuGestionPerfiles(listaPerfiles, perfilFile);
+                break;
+
+            default:
+                cout << "\nOpcion no valida. Intente de nuevo.\n";
+                break;
+        }
+    } while (opcion != 0);
+}
+
 int main() {
-    string userFile = "default_users.txt"; 
-    string perfilFile = "default_profiles.txt";
-    
-    // Cargamos los datos reales desde el .env
+    string userFile = "data/USUARIOS.txt"; 
+    string perfilFile = "data/PERFILES.txt";
+
     cargarConfiguracion(userFile, perfilFile);
-    
+
     cout << "Ruta de usuarios cargada: " << userFile << endl;
     cout << "Ruta de perfiles cargada: " << perfilFile << endl;
-    
-    // Aquí irá el ciclo de tu menú principal (opción 0 para salir)
-    
+
+    vector<Usuario> listaUsuarios;
+    // vector<Perfil> listaPerfiles; // Listo para cuando definas el struct de Perfil
+
+    // Inicio del flujo principal
+    SistOpe(listaUsuarios, userFile, perfilFile);
+
     return 0;
 }
