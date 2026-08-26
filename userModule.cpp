@@ -7,9 +7,7 @@
 
 using namespace std;
 
-// ---------------------------------------------------------------------
 // Utilidad interna: separa una línea "id;nombre;username;password;perfil"
-// ---------------------------------------------------------------------
 static Usuario parsearLinea(const string& linea) {
     Usuario u;
     stringstream ss(linea);
@@ -31,9 +29,7 @@ static string usuarioALinea(const Usuario& u) {
            u.password + ";" + u.perfil;
 }
 
-// ---------------------------------------------------------------------
 // Carga todos los usuarios del archivo hacia la lista en memoria
-// ---------------------------------------------------------------------
 static void cargarUsuariosDesdeArchivo(vector<Usuario>& listaUsuarios, const string& userFile) {
     listaUsuarios.clear();
     ifstream archivo(userFile);
@@ -105,16 +101,13 @@ static int obtenerSiguienteId(vector<Usuario>& listaUsuarios, const string& user
     return maxId + 1;
 }
 
-// ---------------------------------------------------------------------
-// Ingresar usuario (pantalla "admin-ingresar" del diagrama)
-// ---------------------------------------------------------------------
+// Ingresar usuario
 void ingresarUsuario(vector<Usuario>& listaUsuarios, const string& userFile) {
     Usuario nuevo;
     int opcion;
 
     cout << "\n--- Ingreso de usuarios ---\n";
 
-    // El ID se genera automáticamente (último id de la lista + 1)
     nuevo.id = obtenerSiguienteId(listaUsuarios, userFile);
     cout << "Id asignado: " << nuevo.id << "\n";
 
@@ -153,9 +146,7 @@ void ingresarUsuario(vector<Usuario>& listaUsuarios, const string& userFile) {
     }
 }
 
-// ---------------------------------------------------------------------
 // Listar usuarios: si ya hay datos en memoria los usa, si no, lee el archivo
-// ---------------------------------------------------------------------
 void listarUsuarios(vector<Usuario>& listaUsuarios, const string& userFile) {
     if (listaUsuarios.empty()) {
         cargarUsuariosDesdeArchivo(listaUsuarios, userFile);
@@ -180,9 +171,7 @@ void listarUsuarios(vector<Usuario>& listaUsuarios, const string& userFile) {
     }
 }
 
-// ---------------------------------------------------------------------
 // Eliminar usuario por ID (con alerta si es ADMIN)
-// ---------------------------------------------------------------------
 void eliminarUsuario(vector<Usuario>& listaUsuarios, const string& userFile) {
     // Aseguramos tener los datos cargados en memoria antes de operar
     if (listaUsuarios.empty()) {
@@ -230,9 +219,7 @@ void eliminarUsuario(vector<Usuario>& listaUsuarios, const string& userFile) {
     }
 }
 
-// ---------------------------------------------------------------------
-// Menú del módulo (0 Salir, 1 Ingresar, 2 Listar, 3 Eliminar)
-// ---------------------------------------------------------------------
+// Menú del módulo
 void menuGestionUsuarios(vector<Usuario>& listaUsuarios, const string& userFile) {
     int opcion = -1;
 

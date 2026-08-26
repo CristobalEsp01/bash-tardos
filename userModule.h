@@ -17,7 +17,7 @@ struct Usuario {
 // Menú completo del módulo de usuarios (0 salir, 1 ingresar, 2 listar, 3 eliminar)
 void menuGestionUsuarios(vector<Usuario>& listaUsuarios, const string& userFile);
 
-// Funciones individuales (por si se quieren llamar por separado desde el main)
+// Funciones individuales
 void ingresarUsuario(vector<Usuario>& listaUsuarios, const string& userFile);
 void listarUsuarios(vector<Usuario>& listaUsuarios, const string& userFile);
 void eliminarUsuario(vector<Usuario>& listaUsuarios, const string& userFile);
