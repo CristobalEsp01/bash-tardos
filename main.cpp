@@ -1,6 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
+#include "userModule.h"
 
 using namespace std;
 
@@ -29,8 +31,8 @@ void cargarConfiguracion(string& userFile, string& perfilFile) {
 }
 
 int main() {
-    string userFile = "default_users.txt"; 
-    string perfilFile = "default_profiles.txt";
+    string userFile = "data/USUARIOS.txt"; 
+    string perfilFile = "data/PERFILES.txt";
     
     // Cargamos los datos reales desde el .env
     cargarConfiguracion(userFile, perfilFile);
@@ -38,7 +40,11 @@ int main() {
     cout << "Ruta de usuarios cargada: " << userFile << endl;
     cout << "Ruta de perfiles cargada: " << perfilFile << endl;
     
-    // Aquí irá el ciclo de tu menú principal (opción 0 para salir)
+    vector<Usuario> listaUsuarios;
+
+    // Aquí iría el menú general del sistema (usuarios / perfiles / salir).
+    // Por ahora se llama directo al módulo de usuarios:
+    menuGestionUsuarios(listaUsuarios, userFile);
     
     return 0;
 }

@@ -49,3 +49,15 @@ Compila el código fuente generando un archivo binario nativo y luego ejecútalo
 g++ main.cpp -o SistOpe
 ./SistOpe
 ```
+## 3. Descripción de las variables de entorno
+
+El programa lee su configuración desde un archivo `.env` ubicado en la raíz del proyecto (junto a los `.cpp`). Este archivo **no se incluye en el repositorio** por buenas prácticas; en su lugar se entrega `.env.example` como plantilla, el cual debe copiarse como `.env` antes de ejecutar (ver paso 2.1).
+
+Variables utilizadas en esta entrega:
+
+| Variable      | Descripción                                                                 | Valor por defecto |
+|---------------|------------------------------------------------------------------------------|--------------------|
+| `USER_FILE`   | Nombre/ruta del archivo de texto donde se almacenan los usuarios del sistema. | `USUARIOS.TXT`     |
+| `PERFIL_FILE` | Nombre/ruta del archivo de texto donde se almacenan los perfiles del sistema. | `PERFILES.TXT`     |
+
+Si el archivo `.env` no existe o no se encuentra alguna variable, el programa usa los valores por defecto indicados arriba y muestra una advertencia por consola.
