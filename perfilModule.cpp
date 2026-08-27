@@ -15,7 +15,7 @@ static Perfil parsearLinea(const string& linea) {
 
     getline(ss, p.nombre, ';');
     string permisoStr;
-    while (ss, permisoStr, ',') {
+    while (getline(ss, permisoStr, ',')) {
         if (!permisoStr.empty()) p.permisos.push_back(stoi(permisoStr));
     }
 
@@ -26,9 +26,11 @@ static Perfil parsearLinea(const string& linea) {
 static string perfilALinea(const Perfil& p) {
     string linea = p.nombre + ";";
     for (size_t i = 0; i < p.permisos.size(); i++) {
-        linea += p.permisos[i];
-        if (i < p.permisos.size()) linea += ",";
+        linea += to_string(p.permisos[i]);
+        if (i < p.permisos.size() - 1) linea += ",";
     }
+
+    return linea;
 }
 
 // Carga todos los perfiles del archivo hacia la lista en memoria
