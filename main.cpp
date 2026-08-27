@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "userModule.h"
+#include "profileModule.h"
 #include "utils.h"
 
 using namespace std;
@@ -30,7 +31,7 @@ void cargarConfiguracion(string& userFile, string& perfilFile) {
 }
 
 // Menú principal del sistema
-void SistOpe(vector<Usuario>& listaUsuarios, const string& userFile, const string& perfilFile) {
+void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles, const string& userFile, const string& perfilFile) {
     int opcion = -1;
 
     do {
@@ -61,9 +62,8 @@ void SistOpe(vector<Usuario>& listaUsuarios, const string& userFile, const strin
                 break;
 
             case 2:
-                // Espacio reservado para el módulo de perfiles
-                cout << "\n[INFO] Modulo de Administracion de Perfiles proxima implementacion.\n";
-                // menuGestionPerfiles(listaPerfiles, perfilFile);
+                // Llama al CRUD de perfiles implementado en profileModule
+                menuGestionPerfiles(listaPerfiles, perfilFile);
                 break;
 
             default:
@@ -83,10 +83,10 @@ int main() {
     cout << "Ruta de perfiles cargada: " << perfilFile << endl;
 
     vector<Usuario> listaUsuarios;
-    // vector<Perfil> listaPerfiles; // Listo para cuando definas el struct de Perfil
+    vector<Perfil> listaPerfiles;
 
     // Inicio del flujo principal
-    SistOpe(listaUsuarios, userFile, perfilFile);
+    SistOpe(listaUsuarios, listaPerfiles, userFile, perfilFile);
 
     return 0;
 }
