@@ -141,7 +141,7 @@ void ingresarUsuario(vector<Usuario>& listaUsuarios, const string& userFile) {
     }
 }
 
-// Listar usuarios: si ya hay datos en memoria los usa, si no, lee el archivo
+// Listar usuarios: si ya hay datos en memoria los usa, si no, lee el archivo y carga en memoria
 void listarUsuarios(vector<Usuario>& listaUsuarios, const string& userFile) {
     if (listaUsuarios.empty()) {
         cargarUsuariosDesdeArchivo(listaUsuarios, userFile);

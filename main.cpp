@@ -4,6 +4,7 @@
 #include <vector>
 #include "userModule.h"
 #include "profileModule.h"
+#include "matrixModule.h"
 #include "utils.h"
 
 using namespace std;
@@ -26,6 +27,7 @@ void cargarConfiguracion(string& userFile, string& perfilFile) {
         }
         archivo.close();
     } else {
+        // TODO: cambiar nombre de .env.example
         cout << "Advertencia: No se encontró el archivo .env" << endl;
     }
 }
@@ -41,6 +43,7 @@ void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles, cons
         cout << "0) Salir del Sistema\n";
         cout << "1) Administracion de Usuarios\n";
         cout << "2) Administracion de Perfiles\n";
+        cout << "3) Multiplicacion de Matrices\n";
         cout << "--------------------------------------\n";
         cout << "Seleccione una opcion: ";
         
@@ -64,6 +67,10 @@ void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles, cons
             case 2:
                 // Llama al CRUD de perfiles implementado en profileModule
                 menuGestionPerfiles(listaPerfiles, perfilFile);
+                break;
+
+            case 3:
+                menuMultiplicacionMatrices();
                 break;
 
             default:
