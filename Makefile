@@ -5,9 +5,9 @@ CXX      := g++
 CXXFLAGS := -std=c++17 -Wall -Wextra
 
 TARGET   := SistOpe
-SOURCES  := main.cpp userModule.cpp profileModule.cpp
+SOURCES  := main.cpp userModule.cpp profileModule.cpp matrixModule.cpp
 OBJECTS  := $(SOURCES:.cpp=.o)
-HEADERS  := userModule.h profileModule.h utils.h
+HEADERS  := userModule.h profileModule.h matrixModule.h utils.h
 
 # Detecta el sistema operativo para agregar la extension .exe en Windows
 ifeq ($(OS),Windows_NT)
