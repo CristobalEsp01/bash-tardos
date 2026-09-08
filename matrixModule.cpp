@@ -19,12 +19,25 @@ void menuMultiplicacionMatrices() {
                 break;
 
             case 1: {
+                // qué problemas puede tener pasar una ruta arbitraria?
+                string path_string1, path_string2;
+                cout << "Ingrese las rutas absolutas a los archivos con matrices: \n1) ";
+                cin >> path_string1;
+                path_string1 = "'" + path_string1 + "'";
+                cout << "2) ";
+                cin >> path_string2;
+                path_string2 = "'" + path_string2 + "'";
+
+                string sep_string;
+                cout << "Ingrese el caracter separador: ";
+                cin >> sep_string;
+                sep_string = "'" + sep_string + "'";
+
+                const string input_string = "./matmul " + path_string1 + " " + path_string2 + " " + sep_string;
+
                 // podría añadirse una debug flag que decida si imprimir el exit code o no
-                cout << endl;
-                int raw_status = std::system(
-                    "./matmul /home/felipe/bash-tardos/data/test_matrices/A.txt /home/felipe/bash-tardos/data/test_matrices/B.txt '#'"
-                );
-                cout << "programa retorno con codigo " << raw_status << std::endl;
+                int raw_status = std::system(input_string.c_str());
+                cout << "programa retorno con estatus " << raw_status << std::endl;
                 break;
             }
 
