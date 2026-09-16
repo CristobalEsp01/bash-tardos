@@ -5,6 +5,9 @@
 #include "userModule.h"
 #include "profileModule.h"
 #include "matrixModule.h"
+#include "palindromoModule.h"
+#include "conteoTextoModule.h"
+#include "conteoArchModule.h"
 #include "utils.h"
 
 using namespace std;
@@ -33,7 +36,7 @@ void cargarConfiguracion(string& userFile, string& perfilFile) {
 }
 
 // Menú principal del sistema
-void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles, const string& userFile, const string& perfilFile) {
+void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles, const string& userFile, const string& perfilFile, const string& archivoParametroF) {
     int opcion = -1;
 
     do {
@@ -44,6 +47,9 @@ void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles, cons
         cout << "1) Administracion de Usuarios\n";
         cout << "2) Administracion de Perfiles\n";
         cout << "3) Multiplicacion de Matrices\n";
+        cout << "4) Verificacion de Palindromo\n";
+        cout << "6) Conteo sobre Texto\n";
+        cout << "7) Conteo sobre Archivo\n";
         cout << "--------------------------------------\n";
         cout << "Seleccione una opcion: ";
         
@@ -72,6 +78,15 @@ void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles, cons
             case 3:
                 menuMultiplicacionMatrices();
                 break;
+            case 4:
+                menuPalindromo();
+                break;
+            case 6:
+                conteoSobreTexto(archivoParametroF); 
+                break;
+            case 7:
+                conteoSobreArchivo();
+                break;    
 
             default:
                 cout << "\nOpcion no valida. Intente de nuevo.\n";
@@ -80,20 +95,31 @@ void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles, cons
     } while (opcion != 0);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     string userFile = "data/USUARIOS.txt"; 
     string perfilFile = "data/PERFILES.txt";
+    string archivoParametroF = ""; 
+
+    for (int i = 1; i < argc; i++) {
+        string arg = argv[i];
+        if (arg == "-f" && i + 1 < argc) {
+            archivoParametroF = argv[i + 1];
+        }
+    }
 
     cargarConfiguracion(userFile, perfilFile);
 
     cout << "Ruta de usuarios cargada: " << userFile << endl;
     cout << "Ruta de perfiles cargada: " << perfilFile << endl;
+    if (!archivoParametroF.empty()) {
+        cout << "Archivo de texto cargado (-f): " << archivoParametroF << endl;
+    }
 
     vector<Usuario> listaUsuarios;
     vector<Perfil> listaPerfiles;
 
     // Inicio del flujo principal
-    SistOpe(listaUsuarios, listaPerfiles, userFile, perfilFile);
+    SistOpe(listaUsuarios, listaPerfiles, userFile, perfilFile, archivoParametroF);
 
     return 0;
 }
