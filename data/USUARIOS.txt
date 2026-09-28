@@ -1,0 +1,3 @@
+1001;Max Araya;MaxAR;1001;ADMIN
+1002;Maria A;maria;1002;GENERAL
+1003;Pedro;pedro;1003;GENERAL

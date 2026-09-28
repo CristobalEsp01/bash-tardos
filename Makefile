@@ -1,42 +1,35 @@
-# Makefile - SistOpe (Modulo Administrador de Usuarios y Perfiles)
-# INFO198 Sistemas Operativos
+CXX = g++
+CXXFLAGS = -std=c++17 -Wall -Wextra -Iinclude
 
-CXX      := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra
+SRC_DIR = src
+BIN_DIR = bin
 
-TARGET   := SistOpe
-SOURCES  := main.cpp userModule.cpp profileModule.cpp matrixModule.cpp palindromoModule.cpp conteoTextoModule.cpp conteoArchModule.cpp
-OBJECTS  := $(SOURCES:.cpp=.o)
-HEADERS  := userModule.h profileModule.h matrixModule.h palindromoModule.h conteoTextoModule.h conteoArchModule.h utils.h
+TARGET_MAIN = $(BIN_DIR)/SistOpe
+TARGET_MULTI = $(BIN_DIR)/multi
 
-# Detecta el sistema operativo para agregar la extension .exe en Windows
-ifeq ($(OS),Windows_NT)
-    TARGET := $(TARGET).exe
-    RM := del /Q
-else
-    RM := rm -f
-endif
+SOURCES_MAIN = $(SRC_DIR)/main.cpp $(SRC_DIR)/userModule.cpp $(SRC_DIR)/profileModule.cpp $(SRC_DIR)/palindromoModule.cpp $(SRC_DIR)/conteoTextoModule.cpp $(SRC_DIR)/conteoArchModule.cpp
+SOURCES_MULTI = $(SRC_DIR)/matmul.cpp $(SRC_DIR)/matrixModule.cpp
 
-.PHONY: all run clean setup
+OBJECTS_MAIN = $(SOURCES_MAIN:.cpp=.o)
+OBJECTS_MULTI = $(SOURCES_MULTI:.cpp=.o)
 
-# Objetivo por defecto: compilar el ejecutable
-all: $(TARGET)
+RM_CMD = rm -f
+MKDIR_CMD = mkdir -p
 
-$(TARGET): $(OBJECTS)
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJECTS)
+all: dirs $(TARGET_MAIN) $(TARGET_MULTI)
 
-# Cada .cpp depende de sus headers para recompilar si estos cambian
-%.o: %.cpp $(HEADERS)
+dirs:
+	@$(MKDIR_CMD) $(BIN_DIR) 2>/dev/null || true
+
+$(TARGET_MAIN): $(OBJECTS_MAIN)
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJECTS_MAIN)
+
+$(TARGET_MULTI): $(OBJECTS_MULTI)
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJECTS_MULTI)
+
+$(SRC_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-# Crea el .env a partir de .env.example si no existe (no lo sobreescribe)
-setup:
-	@if [ ! -f .env ]; then cp .env.example .env; echo ".env creado a partir de .env.example"; else echo ".env ya existe, no se sobreescribe"; fi
-
-# Compila (si es necesario) y ejecuta el programa
-run: all
-	./$(TARGET)
-
-# Elimina binarios y objetos generados
 clean:
-	$(RM) $(OBJECTS) $(TARGET)
+	$(RM_CMD) $(SRC_DIR)/*.o
+	$(RM_CMD) $(BIN_DIR)/*

@@ -246,3 +246,26 @@ void menuGestionUsuarios(vector<Usuario>& listaUsuarios, const string& userFile)
         }
     } while (opcion != 0);
 }
+
+// ---------------------------------------------------------------------
+// NUEVO: wrapper público para exponer la carga de usuarios hacia afuera
+// del módulo (usado por main.cpp para autenticar antes de entrar al menú).
+// Simplemente reutiliza la función interna que ya existía.
+// ---------------------------------------------------------------------
+void cargarUsuarios(vector<Usuario>& listaUsuarios, const string& userFile) {
+    listaUsuarios.clear();
+    ifstream archivo(userFile);
+    string linea;
+
+    if (archivo.is_open()) {
+        while (getline(archivo, linea)) {
+            if (!linea.empty()) {
+                listaUsuarios.push_back(parsearLinea(linea));
+            }
+        }
+        archivo.close();
+    } else {
+        // NUEVO: Alerta visual si el archivo no se pudo abrir
+        cerr << "\n[CRÍTICO] No se pudo abrir el archivo de usuarios en la ruta: '" << userFile << "'\n";
+    }
+}
