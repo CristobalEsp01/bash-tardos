@@ -1,57 +1,75 @@
 #include "conteoTextoModule.h"
-#include <iostream>
+#include "utils.h"
+
+#include <filesystem>
 #include <fstream>
-#include <cctype>
+#include <iostream>
 
 using namespace std;
+namespace fs = std::filesystem;
 
-void conteoSobreTexto(const string& rutaArchivo) {
-    ifstream archivo(rutaArchivo);
+bool contarArchivo(const string& rutaArchivo, ResultadoConteo& r) {
+    r = ResultadoConteo();
+
+    error_code ec;
+    if (!fs::exists(rutaArchivo, ec)) {
+        cout << "\n[ERROR] El archivo no existe: " << rutaArchivo << "\n";
+        return false;
+    }
+    if (!fs::is_regular_file(rutaArchivo, ec)) {
+        cout << "\n[ERROR] La ruta no corresponde a un archivo: " << rutaArchivo << "\n";
+        return false;
+    }
+    ifstream archivo(rutaArchivo, ios::binary);
     if (!archivo.is_open()) {
-        cout << "\n[ERROR] No se pudo abrir el archivo: " << rutaArchivo << "\n";
-        return; 
+        cout << "\n[ERROR] No se pudo abrir el archivo (revise permisos): " << rutaArchivo << "\n";
+        return false;
     }
 
-    int vocales = 0, consonantes = 0, especiales = 0, palabras = 0;
-    bool enPalabra = false;
-    char c;
+    // Se procesa linea a linea (un caracter UTF-8 nunca cruza lineas),
+    // asi archivos grandes (libros de varios MB) no se cargan completos.
+    string linea;
+    while (getline(archivo, linea)) {
+        bool enPalabra = false;
+        size_t i = 0;
+        while (i < linea.size()) {
+            unsigned int cp = siguienteCaracterUtf8(linea, i);
+            char base = letraBase(cp);
+            bool esDigito = (cp >= '0' && cp <= '9');
 
-    while (archivo.get(c)) {
-        unsigned char uc = c;
-        char minuscula = tolower(uc);
+            if (base) {
+                if (esVocal(base)) r.vocales++;
+                else r.consonantes++;
+            } else if (!esDigito) {
+                bool esEspacio = (cp == ' ' || cp == '\t' || cp == '\r' ||
+                                  cp == '\v' || cp == '\f' || cp == 0xA0 || cp == 0xFEFF);
+                if (!esEspacio) r.especiales++;
+            }
 
-        if (isalpha(uc)) {
-            if (minuscula == 'a' || minuscula == 'e' || minuscula == 'i' || 
-                minuscula == 'o' || minuscula == 'u') {
-                vocales++;
+            if (base || esDigito) {
+                if (!enPalabra) { r.palabras++; enPalabra = true; }
             } else {
-                consonantes++;
-            }
-            if (!enPalabra) {
-                palabras++;
-                enPalabra = true;
-            }
-        } else {
-            enPalabra = false;
-            if (!isalnum(uc) && !isspace(uc)) {
-                especiales++;
+                enPalabra = false;
             }
         }
     }
-    archivo.close();
+    return true;
+}
 
-    int opcion;
-    do {
-        cout << "\n=================================\n";
-        cout << "             CONTEO\n";
-        cout << "=================================\n";
-        cout << "Vocales: " << vocales << "\n";
-        cout << "Consonantes: " << consonantes << "\n";
-        cout << "Caracteres especiales: " << especiales << "\n";
-        cout << "Palabras: " << palabras << "\n";
+void conteoSobreTexto(const string& rutaArchivo) {
+    ResultadoConteo r;
+    cout << "\n=================================\n";
+    cout << "        CONTEO SOBRE TEXTO\n";
+    cout << "=================================\n";
+    cout << "Archivo: " << rutaArchivo << "\n";
+
+    if (contarArchivo(rutaArchivo, r)) {
         cout << "---------------------------------\n";
-        cout << "1) VOLVER\n";
-        cout << "Seleccione una opcion: ";
-        cin >> opcion;
-    } while (opcion != 1);
+        cout << "Vocales               : " << r.vocales << "\n";
+        cout << "Consonantes           : " << r.consonantes << "\n";
+        cout << "Caracteres especiales : " << r.especiales << "\n";
+        cout << "Palabras              : " << r.palabras << "\n";
+        cout << "---------------------------------\n";
+    }
+    pausar("Presione ENTER para VOLVER...");
 }

@@ -1,6 +1,4 @@
-.env
+*.o
+obj/
 *.exe
 *.obj
-SistOpe.exe
-*.o
-SistOpe

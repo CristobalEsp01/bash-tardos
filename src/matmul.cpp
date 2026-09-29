@@ -1,161 +1,252 @@
-#include <bits/stdc++.h>
-#include <filesystem> // TODO: añadir a la documentación de que se requiere C++17
+// =====================================================================
+// multi - Programa multiplicador de matrices NxM
+//
+// Uso: ./bin/multi "<ruta completa A.txt>" "<ruta completa B.txt>" "<separador>" "<usuario>" "<perfil>"
+// Ej:  ./bin/multi "/home/lvc/a.txt" "/home/lvc/b.txt" "#" lvc ADMIN
+//
+// Cada archivo contiene una matriz: una fila por linea y los elementos
+// (numeros enteros) separados por el separador indicado. Ej. con '#':
+//   1#2#3
+//   4#5#6
+//
+// Codigos de salida:
+//   0 ok | 1 uso incorrecto | 2 archivo invalido | 3 separador invalido
+//   4 contenido/formato invalido | 5 dimensiones incompatibles | 6 desborde
+// =====================================================================
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
 using namespace std;
-namespace fs = filesystem;
+namespace fs = std::filesystem;
 
-// TODO: modificar Makefile para que este archivo también se compile pero no se linkee al programa principal 
+using Matriz = vector<vector<long long>>;
 
-void printRow(vector<int>& row, ostream& ostream) {
-    for (int& val : row) ostream << val << " ";
+enum CodigoSalida { OK = 0, USO = 1, ARCHIVO = 2, SEPARADOR = 3, FORMATO = 4, DIMENSIONES = 5, DESBORDE = 6 };
+
+static string quitarEspacios(const string& s) {
+    size_t ini = s.find_first_not_of(" \t\r");
+    if (ini == string::npos) return "";
+    size_t fin = s.find_last_not_of(" \t\r");
+    return s.substr(ini, fin - ini + 1);
 }
 
-void printRowLn(vector<int>& row, ostream& ostream) {
-    for (int& val : row) ostream << val << " ";
-    ostream << endl;
+static string mostrarSeparador(char sep) {
+    if (sep == ' ') return "' ' (espacio)";
+    if (sep == '\t') return "'\\t' (tabulacion)";
+    return string("'") + sep + "'";
 }
 
-bool parseMatrixFromFile(const fs::path& path, vector<vector<int>>& matrix, const char separator) {
-    matrix.clear();
-
-    // open file to read
-    ifstream file(path);
-    if (!file) {
-        cerr << "el archivo " << path << " no pudo leerse" << endl;
-        return false;
+// Valida que el token sea un entero: signo opcional + solo digitos
+static bool esEntero(const string& token) {
+    size_t i = (token[0] == '-' || token[0] == '+') ? 1 : 0;
+    if (i == token.size()) return false;
+    for (; i < token.size(); i++) {
+        if (!isdigit(static_cast<unsigned char>(token[i]))) return false;
     }
-
-    // parse file
-    string line;
-    int rowNumber = 0;
-    while (getline(file, line)) {
-        stringstream ss(line);
-        // ignore only whitespace lines
-        // TODO: que approach es mejor?
-        if (all_of(line.begin(), line.end(), [](const char& c) {return std::isspace(c);})) {
-            continue;
-        }
-        if ((ss >> std::ws).eof()) continue; 
-        
-        vector<int> row;
-        string tempStr;
-        // TODO: que ocurre si hay espacio en blanco después o antes de un valor de la matriz?
-        while (getline(ss, tempStr, separator)) {
-            try {
-                row.push_back(stoi(tempStr));
-            }
-            catch (const invalid_argument& e) {
-                cerr << "un valor de la matriz no pudo ser interpretado como numero:" << endl;
-                // print rowNumber 1-indexed
-                cerr << rowNumber+1 << "  .";
-                printRow(row, std::cerr);
-                cerr << tempStr << endl;
-
-                return false;
-            } 
-            catch (const out_of_range& e) {
-                cerr << "un valor de la matriz se escapa de rango" << endl;
-                // print rowNumber 1-indexed
-                cerr << rowNumber+1 << "  .";
-                printRow(row, std::cerr);
-                cerr << tempStr << endl;
-
-                return false;
-            }
-        }
-
-        matrix.push_back(row);
-
-        // check rows are the same size
-        if (rowNumber > 0 && matrix[rowNumber-1].size() != matrix[rowNumber].size()) {
-            cerr << "matriz en " << path << " tiene filas de distinto largo" << endl;
-
-            // print rowNumber 1-indexed
-            cerr << rowNumber   << ".  ";
-            printRowLn(matrix[rowNumber-1], std::cerr);
-            cerr << rowNumber+1 << ".  ";
-            printRowLn(matrix[rowNumber], std::cerr);
-            
-            return false;
-        }
-
-        rowNumber++;
-    }
-
-    if (matrix.size() == 0) {
-        cerr << "no se encontro matriz en " << path << endl;
-        return false;
-    }
-
     return true;
 }
 
-// WARNING: falla si los valores de la matriz resultante no caben en un int
-vector<vector<int>> matMulNaive(const vector<vector<int>>& a, const vector<vector<int>>& b) {
-	assert (a.size() > 0 && a[0].size() > 0 && b.size() > 0 && b[0].size() > 0 && a[0].size() == b.size());
-	size_t N = b[0].size();
-	size_t M = a.size();
-
-	vector<vector<int>> c(N, vector<int>(M, 0));
-
-	for (size_t i = 0; i < N; i++) {
-		for (size_t j = 0; j < M; j++) {
-			for (size_t k = 0; k < a[0].size(); k++) {
-                c[j][i] += a[j][k] * b[k][i];
-			}	
-		}
-	}
-
-    return c;
+// Valida que la ruta exista, sea completa, sea un archivo y se pueda leer
+static bool validarArchivo(const string& ruta, const string& nombre) {
+    fs::path p(ruta);
+    error_code ec;
+    if (!p.is_absolute()) {
+        cerr << "[ERROR] La ruta del archivo " << nombre << " debe ser completa (absoluta): " << ruta << "\n";
+        return false;
+    }
+    if (!fs::exists(p, ec)) {
+        cerr << "[ERROR] El archivo " << nombre << " no existe: " << ruta << "\n";
+        return false;
+    }
+    if (!fs::is_regular_file(p, ec)) {
+        cerr << "[ERROR] La ruta del archivo " << nombre << " no corresponde a un archivo: " << ruta << "\n";
+        return false;
+    }
+    ifstream prueba(p);
+    if (!prueba.is_open()) {
+        cerr << "[ERROR] No se pudo leer el archivo " << nombre << " (revise permisos): " << ruta << "\n";
+        return false;
+    }
+    return true;
 }
 
-// TODO: optional faster method 
-//int matMulKaratsuba(const vector<vector<int>>& a, const vector<vector<int>>& b) {
-//    return 0;
-//}
+// Lee la matriz validando formato (separador), contenido (enteros) y que
+// todas las filas tengan la misma cantidad de columnas.
+static int leerMatriz(const string& ruta, const string& nombre, char sep, Matriz& m) {
+    m.clear();
+    ifstream archivo(ruta);
+    string linea;
+    int numLinea = 0;
+
+    while (getline(archivo, linea)) {
+        numLinea++;
+        if (!linea.empty() && linea.back() == '\r') linea.pop_back();
+        if (quitarEspacios(linea).empty()) continue;   // se ignoran lineas en blanco
+
+        // Si el separador no es espacio/tab, se ignoran espacios alrededor de cada numero
+        bool sepEsBlanco = (sep == ' ' || sep == '\t');
+        string contenido = sepEsBlanco ? linea : quitarEspacios(linea);
+
+        vector<long long> fila;
+        stringstream ss(contenido);
+        string token;
+        int columna = 0;
+        bool terminaEnSeparador = !contenido.empty() && contenido.back() == sep;
+
+        while (getline(ss, token, sep)) {
+            columna++;
+            string limpio = sepEsBlanco ? token : quitarEspacios(token);
+            if (limpio.empty()) {
+                cerr << "[ERROR] Matriz " << nombre << ", linea " << numLinea << ", elemento " << columna
+                     << ": elemento vacio (separador " << mostrarSeparador(sep)
+                     << " repetido o al inicio de la linea).\n";
+                return FORMATO;
+            }
+            if (!esEntero(limpio)) {
+                cerr << "[ERROR] Matriz " << nombre << ", linea " << numLinea << ", elemento " << columna
+                     << ": '" << limpio << "' no es un numero entero.\n";
+                bool tieneDigitos = false;
+                for (char c : limpio) if (isdigit(static_cast<unsigned char>(c))) tieneDigitos = true;
+                if (tieneDigitos) {
+                    cerr << "        Verifique que el separador del archivo sea " << mostrarSeparador(sep) << ".\n";
+                }
+                return FORMATO;
+            }
+            try {
+                fila.push_back(stoll(limpio));
+            } catch (const out_of_range&) {
+                cerr << "[ERROR] Matriz " << nombre << ", linea " << numLinea << ": el valor '"
+                     << limpio << "' es demasiado grande.\n";
+                return FORMATO;
+            }
+        }
+        if (terminaEnSeparador) {
+            cerr << "[ERROR] Matriz " << nombre << ", linea " << numLinea
+                 << ": la linea termina con el separador (falta un elemento).\n";
+            return FORMATO;
+        }
+
+        if (!m.empty() && fila.size() != m[0].size()) {
+            cerr << "[ERROR] Matriz " << nombre << ": la linea " << numLinea << " tiene " << fila.size()
+                 << " columnas, pero las filas anteriores tienen " << m[0].size() << ".\n";
+            return FORMATO;
+        }
+        m.push_back(fila);
+    }
+
+    if (m.empty()) {
+        cerr << "[ERROR] El archivo de la matriz " << nombre << " esta vacio: " << ruta << "\n";
+        return FORMATO;
+    }
+    return OK;
+}
+
+// C (filas(A) x columnas(B)) = A x B. Devuelve false si hay desborde.
+static bool multiplicar(const Matriz& a, const Matriz& b, Matriz& c) {
+    size_t n = a.size(), k = b.size(), p = b[0].size();
+    c.assign(n, vector<long long>(p, 0));
+    for (size_t i = 0; i < n; i++) {
+        for (size_t j = 0; j < p; j++) {
+            long long suma = 0;
+            for (size_t t = 0; t < k; t++) {
+                long long prod;
+                if (__builtin_mul_overflow(a[i][t], b[t][j], &prod) ||
+                    __builtin_add_overflow(suma, prod, &suma)) {
+                    return false;
+                }
+            }
+            c[i][j] = suma;
+        }
+    }
+    return true;
+}
+
+static void imprimirMatriz(const string& titulo, const Matriz& m) {
+    size_t ancho = 1;
+    for (const auto& fila : m)
+        for (long long v : fila) ancho = max(ancho, to_string(v).size());
+
+    cout << titulo << " (" << m.size() << "x" << m[0].size() << "):\n";
+    for (const auto& fila : m) {
+        cout << "  ";
+        for (size_t j = 0; j < fila.size(); j++) {
+            cout << setw(static_cast<int>(ancho)) << fila[j] << (j + 1 < fila.size() ? "  " : "");
+        }
+        cout << "\n";
+    }
+}
 
 int main(int argc, char* argv[]) {
-    if (argc != 4) {
-        cerr << "arcg = " << argc << endl; 
-        cerr << "Uso: " << argv[0] << " <ruta absoluta a primer archivo txt> <ruta absoluta a segundo archivo txt> <separador>" << endl;
-        return 1;
+    if (argc != 6) {
+        cerr << "Uso: " << argv[0]
+             << " \"<ruta completa A.txt>\" \"<ruta completa B.txt>\" \"<separador>\" \"<usuario>\" \"<perfil>\"\n";
+        cerr << "Ej:  " << argv[0] << " \"/home/lvc/a.txt\" \"/home/lvc/b.txt\" \"#\" lvc ADMIN\n";
+        return USO;
     }
 
-    filesystem::path A_path(argv[1]); 
-    if (!filesystem::exists(A_path) || !A_path.is_absolute()) {
-        cerr << "archivo " << argv[1] << " no existe o no es una ruta absoluta" << endl;
-        return 2;
+    string rutaA = argv[1], rutaB = argv[2], sepStr = argv[3];
+    string usuario = argv[4], perfil = argv[5];
+
+    cout << "\n======================================\n";
+    cout << "     MULTIPLICADOR DE MATRICES NxM\n";
+    cout << "======================================\n";
+    cout << "Usuario: " << usuario << "   |   Perfil: " << perfil << "\n";
+    cout << "--------------------------------------\n";
+
+    if (usuario.empty() || perfil.empty()) {
+        cerr << "[ERROR] El usuario y el perfil no pueden estar vacios.\n";
+        return USO;
     }
 
-    filesystem::path B_path(argv[2]); 
-    if (!filesystem::exists(B_path) || !B_path.is_absolute()) {
-        cerr << "archivo " << argv[2] << " no existe o no es una ruta absoluta" << endl;
-        return 2;
+    // --- validar separador ---
+    if (sepStr.size() != 1) {
+        cerr << "[ERROR] El separador debe ser exactamente un caracter (recibido: \"" << sepStr << "\").\n";
+        return SEPARADOR;
+    }
+    char sep = sepStr[0];
+    if (isdigit(static_cast<unsigned char>(sep)) || sep == '-' || sep == '+' || sep == '\n' || sep == '\r') {
+        cerr << "[ERROR] El separador " << mostrarSeparador(sep)
+             << " no es valido (no puede ser un digito, signo ni salto de linea).\n";
+        return SEPARADOR;
     }
 
-    if (strlen(argv[3]) != 1) {
-        cerr << "el separador debe ser un solo caracter" << endl;
-        return 3; 
-    }
-    char separator = argv[3][0];
+    // --- validar archivos ---
+    if (!validarArchivo(rutaA, "A") || !validarArchivo(rutaB, "B")) return ARCHIVO;
 
-    
-    vector<vector<int>> A;
-    if (!parseMatrixFromFile(A_path, A, separator)) return 4;
-    
-    vector<vector<int>> B;
-    if (!parseMatrixFromFile(B_path, B, separator)) return 4;
-    
-    
+    // --- leer y validar contenido ---
+    Matriz A, B, C;
+    int codigo = leerMatriz(rutaA, "A", sep, A);
+    if (codigo != OK) return codigo;
+    codigo = leerMatriz(rutaB, "B", sep, B);
+    if (codigo != OK) return codigo;
+
+    cout << "Archivo A: " << rutaA << "\n";
+    cout << "Archivo B: " << rutaB << "\n";
+    cout << "Separador: " << mostrarSeparador(sep) << "\n\n";
+    imprimirMatriz("Matriz A", A);
+    imprimirMatriz("Matriz B", B);
+
+    // --- validar que se puedan multiplicar ---
     if (A[0].size() != B.size()) {
-        cerr << "las matrices tienen dimensiones incompatibles. ";
-        cerr << "( " << A.size() << "x" << A[0].size() << " y " << B.size() << "x" << B[0].size() << " )" << endl; 
-        return 5;
+        cerr << "\n[ERROR] No es posible multiplicar: A es " << A.size() << "x" << A[0].size()
+             << " y B es " << B.size() << "x" << B[0].size() << ".\n";
+        cerr << "        Las columnas de A (" << A[0].size() << ") deben ser iguales a las filas de B ("
+             << B.size() << ").\n";
+        return DIMENSIONES;
     }
-    
-    vector<vector<int>> C = matMulNaive(A, B);
 
-    for (vector<int>& row : C) printRowLn(row, std::cout);
-    cout << endl;
+    if (!multiplicar(A, B, C)) {
+        cerr << "\n[ERROR] El resultado es demasiado grande (desborde numerico).\n";
+        return DESBORDE;
+    }
 
-    return 0;
+    cout << "\n";
+    imprimirMatriz("Resultado A x B", C);
+    return OK;
 }

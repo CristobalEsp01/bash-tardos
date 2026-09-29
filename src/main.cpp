@@ -1,83 +1,124 @@
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <vector>
-#include <cstdlib>
-#include "userModule.h"
-#include "profileModule.h"
-#include "palindromoModule.h"
-#include "conteoTextoModule.h"
+// =====================================================================
+// SistOpe - MENU PRINCIPAL
+//
+// Uso: ./bin/SistOpe -u <usuario> -p <password> [-f <archivo.txt>]
+// =====================================================================
+#include "config.h"
 #include "conteoArchModule.h"
+#include "conteoTextoModule.h"
+#include "palindromoModule.h"
+#include "profileModule.h"
+#include "userModule.h"
 #include "utils.h"
 
+#include <filesystem>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include <sys/wait.h>
+#include <unistd.h>
+
 using namespace std;
+namespace fs = std::filesystem;
 
 // ---------------------------------------------------------------------
-// Lee el archivo .env y extrae las rutas de usuarios y perfiles
-// ---------------------------------------------------------------------
-void cargarConfiguracion(string& userFile, string& perfilFile) {
-    ifstream archivo(".env");
-    string linea;
-
-    if (archivo.is_open()) {
-        while (getline(archivo, linea)) {
-            // Eliminar salto de carro invisible de Windows (\r)
-            if (!linea.empty() && linea.back() == '\r') {
-                linea.pop_back();
-            }
-            
-            size_t pos = linea.find('=');
-            if (pos != string::npos) {
-                string clave = linea.substr(0, pos);
-                string valor = linea.substr(pos + 1);
-
-                if (clave == "USER_FILE") userFile = valor;
-                if (clave == "PERFIL_FILE") perfilFile = valor;
-            }
-        }
-        archivo.close();
-    } else {
-        cout << "Advertencia: No se encontro el archivo .env, se usaran valores por defecto.\n";
-    }
-}
-
-// ---------------------------------------------------------------------
-// Argumentos de ejecucion: -u usuario, -p password, -f archivo (opcional)
+// Argumentos de ejecucion: -u usuario, -p password, -f archivo
 // ---------------------------------------------------------------------
 struct Argumentos {
     string usuario;
     string password;
     string archivoF;
-    bool usuarioOk = false;
-    bool passwordOk = false;
 };
 
-Argumentos parsearArgumentos(int argc, char* argv[]) {
-    Argumentos args;
+static void mostrarUso(const char* programa) {
+    cerr << "Uso: " << programa << " -u <usuario> -p <password> [-f <archivo.txt>]\n";
+    cerr << "  -u  nombre de usuario (obligatorio)\n";
+    cerr << "  -p  password (obligatorio)\n";
+    cerr << "  -f  archivo de texto para la opcion 6 (CONTEO SOBRE TEXTO)\n";
+    cerr << "Ejemplo: " << programa << " -u lvc -p 1001 -f \"/home/lvc/archivo.txt\"\n";
+}
+
+// Devuelve false si los argumentos no son validos
+static bool parsearArgumentos(int argc, char* argv[], Argumentos& args) {
+    bool vistoU = false, vistoP = false, vistoF = false;
     for (int i = 1; i < argc; i++) {
         string arg = argv[i];
-        if (arg == "-u" && i + 1 < argc) {
-            args.usuario = argv[++i];
-            args.usuarioOk = true;
-        } else if (arg == "-p" && i + 1 < argc) {
-            args.password = argv[++i];
-            args.passwordOk = true;
-        } else if (arg == "-f" && i + 1 < argc) {
-            args.archivoF = argv[++i];
+        string* destino = nullptr;
+        bool* visto = nullptr;
+        if (arg == "-u")      { destino = &args.usuario;  visto = &vistoU; }
+        else if (arg == "-p") { destino = &args.password; visto = &vistoP; }
+        else if (arg == "-f") { destino = &args.archivoF; visto = &vistoF; }
+        else {
+            cerr << "Argumento no reconocido: " << arg << "\n";
+            return false;
         }
+        if (*visto) {
+            cerr << "El argumento " << arg << " esta repetido.\n";
+            return false;
+        }
+        if (i + 1 >= argc || argv[i + 1][0] == '\0') {
+            cerr << "Falta el valor del argumento " << arg << ".\n";
+            return false;
+        }
+        *destino = argv[++i];
+        *visto = true;
     }
-    return args;
+    if (!vistoU || !vistoP) {
+        cerr << "Los argumentos -u y -p son obligatorios para iniciar sesion.\n";
+        return false;
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------
-// Autentica contra la lista de usuarios (cargada desde USER_FILE)
+// Ejecuta otro programa mediante llamadas a sistema:
+//   fork()   -> crea un proceso hijo
+//   execv()  -> el hijo se reemplaza por el programa indicado
+//   waitpid()-> el menu espera a que el hijo termine
+// No usa system() ni una shell, asi que rutas con espacios o caracteres
+// especiales no pueden inyectar comandos.
+// Devuelve el codigo de salida del programa, o -1 si no se pudo ejecutar.
 // ---------------------------------------------------------------------
-bool autenticarUsuario(vector<Usuario>& listaUsuarios, const string& userFile,
-                        const string& usuario, const string& password,
-                        Usuario& usuarioAutenticado) {
-    if (listaUsuarios.empty()) {
-        cargarUsuarios(listaUsuarios, userFile);
+static int ejecutarPrograma(const vector<string>& argumentos) {
+    if (access(argumentos[0].c_str(), X_OK) != 0) {
+        cout << "\n[ERROR] No se encontro el ejecutable '" << argumentos[0]
+             << "' o no tiene permisos de ejecucion. Compile el sistema con 'make'.\n";
+        return -1;
     }
+
+    cout.flush();
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        return -1;
+    }
+    if (pid == 0) {
+        vector<char*> argv;
+        for (const auto& a : argumentos) argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execv(argv[0], argv.data());
+        perror("execv");   // solo llega aqui si execv fallo
+        _exit(127);
+    }
+
+    int estado = 0;
+    if (waitpid(pid, &estado, 0) < 0) {
+        perror("waitpid");
+        return -1;
+    }
+    if (WIFEXITED(estado)) return WEXITSTATUS(estado);
+    if (WIFSIGNALED(estado)) {
+        cout << "\n[ERROR] El programa termino por la senal " << WTERMSIG(estado) << ".\n";
+    }
+    return -1;
+}
+
+// ---------------------------------------------------------------------
+// Autentica contra la lista de usuarios (USER_FILE)
+// ---------------------------------------------------------------------
+static bool autenticarUsuario(const vector<Usuario>& listaUsuarios, const string& usuario,
+                              const string& password, Usuario& usuarioAutenticado) {
     for (const auto& u : listaUsuarios) {
         if (u.username == usuario && u.password == password) {
             usuarioAutenticado = u;
@@ -88,196 +129,229 @@ bool autenticarUsuario(vector<Usuario>& listaUsuarios, const string& userFile,
 }
 
 // ---------------------------------------------------------------------
-// Encabezado visible en TODAS las pantallas del menu principal
+// Permisos: la opcion debe estar en la lista del perfil (PERFIL_FILE).
+// Ademas la opcion 1 es exclusiva del perfil ADMIN (enunciado).
 // ---------------------------------------------------------------------
-void mostrarEncabezado(const Usuario& usuarioActual) {
+struct Sesion {
+    Usuario usuario;
+    Perfil perfil;          // copia del perfil del usuario (puede no tener opciones)
+    string archivoF;
+    Config cfg;
+};
+
+static bool tienePermiso(const Sesion& s, int opcion) {
+    if (opcion == 0) return true;                                   // salir siempre
+    if (opcion == 1 && s.usuario.perfil != s.cfg.adminPerfil) return false;
+    return s.perfil.tienePermiso(opcion);
+}
+
+static void mostrarEncabezado(const Sesion& s) {
     cout << "\n======================================\n";
     cout << "        SISTOPE - MENU PRINCIPAL\n";
     cout << "======================================\n";
-    cout << "Usuario: " << usuarioActual.username
-         << "   |   Perfil: " << usuarioActual.perfil << "\n";
+    cout << "Usuario: " << s.usuario.username << " (" << s.usuario.nombre << ")"
+         << "   |   Perfil: " << s.usuario.perfil << "\n";
     cout << "--------------------------------------\n";
 }
 
 // ---------------------------------------------------------------------
-// Opcion 2: Multiplicacion de matrices -> se ejecuta como PROGRAMA APARTE
-// (coincide con el target "multi" del Makefile)
+// Opcion 1: llama al programa de ADMINISTRACION DE USUARIOS Y PERFILES
 // ---------------------------------------------------------------------
-void ejecutarMultiplicacionMatrices() {
-    string rutaA, rutaB, separador;
-    cout << "\n--- Multiplicacion de matrices NxM ---\n";
-    cout << "Ruta archivo A: ";
-    getline(cin, rutaA);
-    cout << "Ruta archivo B: ";
-    getline(cin, rutaB);
-    cout << "Separador usado en las matrices: ";
-    getline(cin, separador);
+static void opcionAdministracion(const Sesion& s) {
+    ejecutarPrograma({s.cfg.adminBin, s.usuario.username});
+}
 
-    string comando = "./bin/multi \"" + rutaA + "\" \"" + rutaB + "\" \"" + separador + "\"";
-    cout << "\nEjecutando: " << comando << "\n\n";
-    int resultado = system(comando.c_str());
-
-    if (resultado != 0) {
-        cout << "\nEl programa de multiplicacion termino con un error (codigo "
-             << resultado << "). Verifique rutas y formato de los archivos.\n";
+// ---------------------------------------------------------------------
+// Opcion 2: multiplicacion de matrices -> programa aparte (MULTI_BIN)
+// ---------------------------------------------------------------------
+static string pedirRutaArchivo(const string& mensaje) {
+    while (true) {
+        string ruta = leerLinea(mensaje);
+        if (ruta.size() >= 2 && (ruta.front() == '"' || ruta.front() == '\'') && ruta.back() == ruta.front()) {
+            ruta = ruta.substr(1, ruta.size() - 2);
+        }
+        if (ruta == "0") return "";
+        if (ruta.empty()) {
+            cout << "Debe ingresar una ruta (o 0 para volver).\n";
+            continue;
+        }
+        // el programa multi exige rutas completas: se convierten aqui
+        error_code ec;
+        fs::path absoluta = fs::absolute(ruta, ec);
+        if (ec) {
+            cout << "Ruta invalida.\n";
+            continue;
+        }
+        return absoluta.lexically_normal().string();
     }
 }
 
+static void opcionMultiplicarMatrices(const Sesion& s) {
+    cout << "\n--- Multiplicacion de matrices NxM ---\n";
+    cout << "Ingrese las rutas de los archivos con las matrices (0 para volver).\n";
+    cout << "(Ej: data/test_matrices/A.txt y data/test_matrices/B.txt con separador #)\n";
+
+    string rutaA = pedirRutaArchivo("Ruta archivo A: ");
+    if (rutaA.empty()) return;
+    string rutaB = pedirRutaArchivo("Ruta archivo B: ");
+    if (rutaB.empty()) return;
+
+    string separador;
+    while (true) {
+        separador = leerLinea("Separador de los elementos (un caracter, ej: # , ;): ");
+        if (separador.size() == 1) break;
+        cout << "El separador debe ser exactamente un caracter.\n";
+    }
+
+    int codigo = ejecutarPrograma({s.cfg.multiBin, rutaA, rutaB, separador,
+                                   s.usuario.username, s.usuario.perfil});
+    if (codigo > 0) {
+        cout << "\nLa multiplicacion no se pudo realizar (codigo " << codigo
+             << "). Revise el mensaje anterior.\n";
+    }
+    pausar();
+}
+
 // ---------------------------------------------------------------------
-// Opcion 3: Juego (placeholder segun enunciado: "mensaje en construccion")
+// Opcion 3: Juego (segun enunciado: mensaje en construccion)
 // ---------------------------------------------------------------------
-void menuJuego() {
+static void opcionJuego() {
     cout << "\n--- Juego ---\n";
-    cout << "Funcionalidad en construccion.\n";
+    cout << "Funcionalidad EN CONSTRUCCION.\n";
+    pausar();
 }
 
 // ---------------------------------------------------------------------
-// Opcion 5: f(x) = x^2 + 2x + 8, con opcion VOLVER
+// Opcion 5: f(x) = x^2 + 2x + 8 con numeros reales y opcion VOLVER
 // ---------------------------------------------------------------------
-void menuCalcularFuncion() {
-    int opcion;
-    do {
-        double x, resultado;
-        cout << "\n--- Calcular f(x) = x^2 + 2x + 8 ---\n";
-        cout << "Ingrese valor de x: ";
-        if (!(cin >> x)) {
-            cout << "Valor invalido.\n";
-            limpiarBuffer();
-            continue;
-        }
-        limpiarBuffer();
-
-        resultado = (x * x) + (2 * x) + 8;
-        cout << "f(" << x << ") = " << resultado << "\n";
-
-        cout << "\n1) Calcular otro valor   2) Volver\n";
-        cout << "Opcion: ";
-        cin >> opcion;
-        limpiarBuffer();
-    } while (opcion == 1);
-}
-
-// ---------------------------------------------------------------------
-// Menu principal (7 opciones + salir), tal como pide el enunciado
-// ---------------------------------------------------------------------
-void SistOpe(vector<Usuario>& listaUsuarios, vector<Perfil>& listaPerfiles,
-             const string& userFile, const string& perfilFile,
-             const string& archivoParametroF, const Usuario& usuarioActual) {
+static void opcionCalcularFuncion() {
     int opcion = -1;
-
     do {
-        mostrarEncabezado(usuarioActual);
-        cout << "0) Salir del Sistema\n";
-        cout << "1) Administracion de Usuarios y Perfiles";
-        if (usuarioActual.perfil != "ADMIN") cout << "  (solo ADMIN)";
-        cout << "\n";
-        cout << "2) Multiplicacion de Matrices NxM\n";
-        cout << "3) Juego\n";
-        cout << "4) Es Palindromo?\n";
-        cout << "5) Calcular f(x) = x^2 + 2x + 8\n";
-        cout << "6) Conteo sobre Texto (usa archivo entregado con -f)\n";
-        cout << "7) Conteo sobre Archivo\n";
-        cout << "--------------------------------------\n";
-        cout << "Seleccione una opcion: ";
+        cout << "\n======================================\n";
+        cout << "     CALCULAR f(x) = x*x + 2x + 8\n";
+        cout << "======================================\n";
+        cout << "1) Ingresar valor de x\n";
+        cout << "0) VOLVER\n";
+        opcion = leerEntero("Seleccione una opcion: ");
 
-        if (!(cin >> opcion)) {
-            cout << "Entrada invalida. Ingrese un numero.\n";
-            limpiarBuffer();
+        if (opcion == 1) {
+            double x = leerReal("x = ");
+            double cuadrado = x * x;
+            double doble = 2 * x;
+            double resultado = cuadrado + doble + 8;
+
+            string xs = formatearReal(x);
+            cout << "\nf(x) = x*x + 2x + 8\n";
+            cout << "f(" << xs << ") = (" << xs << ")*(" << xs << ") + 2*(" << xs << ") + 8\n";
+            string dobleTxt = formatearReal(doble);
+            if (doble < 0) dobleTxt = "(" + dobleTxt + ")";
+            cout << "f(" << xs << ") = " << formatearReal(cuadrado) << " + "
+                 << dobleTxt << " + 8\n";
+            cout << "f(" << xs << ") = " << formatearReal(resultado) << "\n";
+        } else if (opcion != 0) {
+            cout << "Opcion no valida.\n";
+        }
+    } while (opcion != 0);
+}
+
+// ---------------------------------------------------------------------
+// Menu principal: 7 opciones + salir
+// ---------------------------------------------------------------------
+static void menuPrincipal(const Sesion& s) {
+    const vector<string> nombres = {
+        "Salir",
+        "Administracion de usuarios y perfiles",
+        "Multiplicar matrices NxM",
+        "Juego",
+        "Es palindromo?",
+        "Calcular f(x) = x*x + 2x + 8",
+        "Conteo sobre texto (archivo de -f)",
+        "Conteo sobre archivo",
+    };
+
+    int opcion = -1;
+    do {
+        mostrarEncabezado(s);
+        for (int i = 0; i <= OPCION_MAXIMA_MENU; i++) {
+            cout << i << ") " << nombres[i];
+            if (!tienePermiso(s, i)) cout << "   [sin permiso]";
+            cout << "\n";
+        }
+        cout << "--------------------------------------\n";
+        opcion = leerEntero("Seleccione una opcion: ");
+
+        if (opcion < 0 || opcion > OPCION_MAXIMA_MENU) {
+            cout << "\nOpcion no valida. Ingrese un numero entre 0 y " << OPCION_MAXIMA_MENU << ".\n";
             continue;
         }
-        limpiarBuffer();
+        if (!tienePermiso(s, opcion)) {
+            cout << "\nACCESO DENEGADO: su perfil (" << s.usuario.perfil
+                 << ") no tiene permiso para la opcion " << opcion << ".\n";
+            continue;
+        }
 
         switch (opcion) {
-            case 0:
-                cout << "\nCerrando sesion y saliendo del sistema...\n";
-                break;
-
-            case 1:
-                if (usuarioActual.perfil != "ADMIN") {
-                    cout << "\nACCESO DENEGADO: esta opcion es exclusiva del perfil ADMIN.\n";
-                    break;
-                }
-                {
-                    int sub;
-                    cout << "\n--- Administracion de Usuarios y Perfiles ---\n";
-                    cout << "1) Usuarios\n2) Perfiles\n0) Volver\n";
-                    cout << "Opcion: ";
-                    cin >> sub;
-                    limpiarBuffer();
-                    if (sub == 1) menuGestionUsuarios(listaUsuarios, userFile);
-                    else if (sub == 2) menuGestionPerfiles(listaPerfiles, perfilFile);
-                }
-                break;
-
-            case 2:
-                ejecutarMultiplicacionMatrices();
-                break;
-
-            case 3:
-                menuJuego();
-                break;
-
-            case 4:
-                menuPalindromo();
-                break;
-
-            case 5:
-                menuCalcularFuncion();
-                break;
-
+            case 0: cout << "\nCerrando sesion y saliendo del sistema...\n"; break;
+            case 1: opcionAdministracion(s); break;
+            case 2: opcionMultiplicarMatrices(s); break;
+            case 3: opcionJuego(); break;
+            case 4: menuPalindromo(); break;
+            case 5: opcionCalcularFuncion(); break;
             case 6:
-                if (archivoParametroF.empty()) {
-                    cout << "\nError: no se especifico un archivo con -f al ejecutar el programa.\n";
-                    break;
+                if (s.archivoF.empty()) {
+                    cout << "\nNo se indico un archivo con -f al ejecutar el programa.\n";
+                    cout << "Ejemplo: ./bin/SistOpe -u usuario -p clave -f \"/ruta/archivo.txt\"\n";
+                } else {
+                    conteoSobreTexto(s.archivoF);
                 }
-                conteoSobreTexto(archivoParametroF);
                 break;
-
-            case 7:
-                conteoSobreArchivo();
-                break;
-
-            default:
-                cout << "\nOpcion no valida. Intente de nuevo.\n";
-                break;
+            case 7: conteoSobreArchivo(s.cfg.librosDir); break;
         }
     } while (opcion != 0);
 }
 
 int main(int argc, char* argv[]) {
-    string userFile = "data/USUARIOS.txt";
-    string perfilFile = "data/PERFILES.txt";
-
-    cargarConfiguracion(userFile, perfilFile);
-
-    Argumentos args = parsearArgumentos(argc, argv);
-
-    // Validacion de argumentos obligatorios (protege integridad del sistema:
-    // nadie entra sin credenciales)
-    if (!args.usuarioOk || !args.passwordOk) {
-        cerr << "Uso: " << argv[0] << " -u <usuario> -p <password> [-f <archivo>]\n";
-        cerr << "Los parametros -u y -p son obligatorios para iniciar sesion.\n";
+    Argumentos args;
+    if (!parsearArgumentos(argc, argv, args)) {
+        mostrarUso(argv[0]);
         return 1;
     }
 
-    vector<Usuario> listaUsuarios;
-    vector<Perfil> listaPerfiles;
-    Usuario usuarioActual;
+    Sesion s;
+    s.cfg = cargarConfiguracion();
+    s.archivoF = args.archivoF;
 
-    bool autenticado = autenticarUsuario(listaUsuarios, userFile, args.usuario, args.password, usuarioActual);
-    if (!autenticado) {
-        cerr << "\nError de autenticacion: usuario o password incorrectos.\n";
-        cerr << "Acceso denegado. El sistema se cerrara.\n";
-        return 1;
+    vector<Usuario> usuarios;
+    if (!cargarUsuarios(usuarios, s.cfg.userFile)) {
+        cerr << "No es posible iniciar sesion sin el archivo de usuarios (USER_FILE en .env).\n";
+        return 2;
+    }
+    if (!autenticarUsuario(usuarios, args.usuario, args.password, s.usuario)) {
+        // mensaje generico: no revela si fallo el usuario o la password
+        cerr << "Error de autenticacion: usuario o password incorrectos. Acceso denegado.\n";
+        return 3;
     }
 
-    cout << "Ruta de usuarios cargada: " << userFile << endl;
-    cout << "Ruta de perfiles cargada: " << perfilFile << endl;
-    if (!args.archivoF.empty()) {
-        cout << "Archivo de texto cargado (-f): " << args.archivoF << endl;
+    vector<Perfil> perfiles;
+    cargarPerfiles(perfiles, s.cfg.perfilFile);
+    const Perfil* perfil = buscarPerfil(perfiles, s.usuario.perfil);
+    if (perfil) {
+        s.perfil = *perfil;
+    } else {
+        cerr << "[ADVERTENCIA] El perfil '" << s.usuario.perfil << "' no existe en "
+             << s.cfg.perfilFile << ". Solo podra usar la opcion 0 (Salir).\n";
+        s.perfil.nombre = s.usuario.perfil;
     }
 
-    SistOpe(listaUsuarios, listaPerfiles, userFile, perfilFile, args.archivoF, usuarioActual);
+    if (!s.archivoF.empty()) {
+        error_code ec;
+        if (!fs::is_regular_file(s.archivoF, ec)) {
+            cerr << "[ADVERTENCIA] El archivo indicado con -f no existe o no es un archivo: "
+                 << s.archivoF << "\n";
+        }
+    }
 
+    cout << "Bienvenido/a, " << s.usuario.nombre << ".\n";
+    menuPrincipal(s);
     return 0;
 }

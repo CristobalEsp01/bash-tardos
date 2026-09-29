@@ -1,45 +1,55 @@
 #include "palindromoModule.h"
+#include "utils.h"
+
+#include <algorithm>
 #include <iostream>
 #include <string>
-#include <algorithm>
 
 using namespace std;
 
+// Un texto es palindromo si, considerando solo letras y digitos, se lee
+// igual en ambos sentidos. Ignora mayusculas, espacios, signos y tildes
+// (ej: "Dabale arroz a la zorra el abad" con o sin tildes).
 bool validarPalindromo(const string& texto) {
-    string textoLimpio = "";
-    for (char c : texto) {
-        if (isalpha((unsigned char)c) || isdigit((unsigned char)c)) {
-            textoLimpio += tolower((unsigned char)c);
-        }
+    string limpio;
+    size_t i = 0;
+    while (i < texto.size()) {
+        unsigned int cp = siguienteCaracterUtf8(texto, i);
+        char base = letraBase(cp);
+        if (base) limpio += base;
+        else if (cp >= '0' && cp <= '9') limpio += static_cast<char>(cp);
     }
-    string textoInvertido = textoLimpio;
-    reverse(textoInvertido.begin(), textoInvertido.end());
-    return (textoLimpio == textoInvertido && textoLimpio.length() > 0);
+    if (limpio.empty()) return false;
+    string invertido(limpio.rbegin(), limpio.rend());
+    return limpio == invertido;
 }
 
 void menuPalindromo() {
-    int opcion = -1;
-    string texto;
-    do {
+    while (true) {
         cout << "\n===============================\n";
-        cout << "   REVISION DE PALINDROMOS  \n";
+        cout << "        ES PALINDROMO?\n";
         cout << "===============================\n";
-        cout << "1) Validar\n";
+        string texto = leerLinea("Escriba un texto: ");
+
+        cout << "\n1) Validar\n";
         cout << "2) Cancelar\n";
-        cout << "Seleccione una opcion: ";
-        cin >> opcion;
-
-        if (opcion == 1) {
-            cout << "\nIngrese una palabra o frase: ";
-            getline(cin >> ws, texto); 
-
-            if (validarPalindromo(texto)) {
-                cout << "\nEl texto ES un palíndromo.\n";
-            } else {
-                cout << "\nEl texto NO es un palíndromo.\n";
-            }
-        } else if (opcion != 2) {
-            cout << "Opcion invalida. Intente de nuevo.\n";
+        int opcion = leerEntero("Seleccione una opcion: ");
+        while (opcion != 1 && opcion != 2) {
+            cout << "Opcion invalida. Ingrese 1 o 2.\n";
+            opcion = leerEntero("Seleccione una opcion: ");
         }
-    } while (opcion != 2);
+
+        if (opcion == 2) {
+            cout << "Volviendo al MENU PRINCIPAL...\n";
+            return;
+        }
+
+        if (texto.empty()) {
+            cout << "\nNo ingreso ningun texto.\n";
+        } else if (validarPalindromo(texto)) {
+            cout << "\n\"" << texto << "\" SI es un palindromo.\n";
+        } else {
+            cout << "\n\"" << texto << "\" NO es un palindromo.\n";
+        }
+    }
 }

@@ -1,35 +1,47 @@
-CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -Iinclude
+CXX      = g++
+CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -Iinclude
+# libstdc++ estatica: el ejecutable funciona en otros Linux aunque tengan otra version de g++
+LDFLAGS  = -static-libstdc++ -static-libgcc
 
 SRC_DIR = src
+OBJ_DIR = obj
 BIN_DIR = bin
 
-TARGET_MAIN = $(BIN_DIR)/SistOpe
+TARGET_MAIN  = $(BIN_DIR)/SistOpe
+TARGET_ADMIN = $(BIN_DIR)/admin
 TARGET_MULTI = $(BIN_DIR)/multi
 
-SOURCES_MAIN = $(SRC_DIR)/main.cpp $(SRC_DIR)/userModule.cpp $(SRC_DIR)/profileModule.cpp $(SRC_DIR)/palindromoModule.cpp $(SRC_DIR)/conteoTextoModule.cpp $(SRC_DIR)/conteoArchModule.cpp
-SOURCES_MULTI = $(SRC_DIR)/matmul.cpp $(SRC_DIR)/matrixModule.cpp
+COMMON  = config.cpp userModule.cpp profileModule.cpp
+SRC_MAIN  = main.cpp palindromoModule.cpp conteoTextoModule.cpp conteoArchModule.cpp $(COMMON)
+SRC_ADMIN = admin.cpp $(COMMON)
+SRC_MULTI = matmul.cpp
 
-OBJECTS_MAIN = $(SOURCES_MAIN:.cpp=.o)
-OBJECTS_MULTI = $(SOURCES_MULTI:.cpp=.o)
+OBJ_MAIN  = $(addprefix $(OBJ_DIR)/,$(SRC_MAIN:.cpp=.o))
+OBJ_ADMIN = $(addprefix $(OBJ_DIR)/,$(SRC_ADMIN:.cpp=.o))
+OBJ_MULTI = $(addprefix $(OBJ_DIR)/,$(SRC_MULTI:.cpp=.o))
 
-RM_CMD = rm -f
-MKDIR_CMD = mkdir -p
+.PHONY: all clean run
 
-all: dirs $(TARGET_MAIN) $(TARGET_MULTI)
+all: $(TARGET_MAIN) $(TARGET_ADMIN) $(TARGET_MULTI)
 
-dirs:
-	@$(MKDIR_CMD) $(BIN_DIR) 2>/dev/null || true
+$(TARGET_MAIN): $(OBJ_MAIN) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(TARGET_MAIN): $(OBJECTS_MAIN)
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJECTS_MAIN)
+$(TARGET_ADMIN): $(OBJ_ADMIN) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(TARGET_MULTI): $(OBJECTS_MULTI)
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJECTS_MULTI)
+$(TARGET_MULTI): $(OBJ_MULTI) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(SRC_DIR)/%.o: $(SRC_DIR)/%.cpp
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(wildcard include/*.h) | $(OBJ_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+$(BIN_DIR) $(OBJ_DIR):
+	mkdir -p $@
+
+# Ejemplo: make run ARGS='-u MaxAR -p 1001 -f data/LIBROS/drama/hamlet_shakespeare.txt'
+run: all
+	./$(TARGET_MAIN) $(ARGS)
+
 clean:
-	$(RM_CMD) $(SRC_DIR)/*.o
-	$(RM_CMD) $(BIN_DIR)/*
+	rm -rf $(OBJ_DIR) $(TARGET_MAIN) $(TARGET_ADMIN) $(TARGET_MULTI)
