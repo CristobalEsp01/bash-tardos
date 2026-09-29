@@ -159,12 +159,14 @@ Si faltan `-u` o `-p`, o si las credenciales son incorrectas, el sistema no inic
 
 ### Estructura del proyecto
 
+> Para colaborar en el código, seguir las reglas de [`docs/convenciones.md`](docs/convenciones.md).
+
 ```
 bin/        ejecutables compilados (SistOpe, admin, multi)
 data/       USUARIOS.txt, PERFILES.txt, test_matrices/, LIBROS/
 include/    headers (.h)
 src/        código fuente (.cpp)
-docs/       enunciados de las entregas
+docs/       enunciados de las entregas y convenciones del grupo
 .env.example plantilla de variables de entorno (copiar a .env)
 Makefile
 ```
