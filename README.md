@@ -108,9 +108,10 @@ Requisitos: **Linux** (o WSL en Windows), `g++` con soporte C++17 y `make`.
 ```bash
 git clone https://github.com/CristobalEsp01/bash-tardos.git
 cd bash-tardos
+cp .env.example .env
 ```
 
-El archivo `.env` ya viene incluido en el repositorio (`.env.example` es una copia de referencia).
+El archivo `.env` **no se sube al repositorio** (está en `.gitignore`). Se crea copiando la plantilla `.env.example`, que contiene todas las variables con sus valores recomendados. Si el `.env` no existe, el sistema muestra una advertencia y usa esos mismos valores por defecto.
 
 ### 2.2 Compilar
 
@@ -164,7 +165,7 @@ data/       USUARIOS.txt, PERFILES.txt, test_matrices/, LIBROS/
 include/    headers (.h)
 src/        código fuente (.cpp)
 docs/       enunciados de las entregas
-.env        variables de entorno
+.env.example plantilla de variables de entorno (copiar a .env)
 Makefile
 ```
 
@@ -172,7 +173,7 @@ Makefile
 
 ## 3. Descripción de las variables de entorno
 
-El sistema lee su configuración desde el archivo `.env` en la raíz del proyecto. Si una variable también está definida en el entorno del sistema (por ejemplo `export USER_FILE=...`), esa tiene prioridad. Si falta una variable, se usa el valor por defecto y se muestra una advertencia.
+El sistema lee su configuración desde el archivo `.env` en la raíz del proyecto (se crea con `cp .env.example .env`). Si una variable también está definida en el entorno del sistema (por ejemplo `export USER_FILE=...`), esa tiene prioridad. Si falta una variable, se usa el valor por defecto y se muestra una advertencia.
 
 | Variable | Descripción | Valor por defecto |
 |---|---|---|
