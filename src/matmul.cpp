@@ -5,15 +5,17 @@
 // Ej:  ./bin/multi "/home/lvc/a.txt" "/home/lvc/b.txt" "#" lvc ADMIN
 //
 // Cada archivo contiene una matriz: una fila por linea y los elementos
-// (numeros enteros) separados por el separador indicado. Ej. con '#':
-//   1#2#3
-//   4#5#6
+// (numeros enteros o decimales, con punto) separados por el separador
+// indicado. Ej. con '#':
+//   1#2.5#3
+//   -4#0.75#6
 //
 // Codigos de salida:
 //   0 ok | 1 uso incorrecto | 2 archivo invalido | 3 separador invalido
 //   4 contenido/formato invalido | 5 dimensiones incompatibles | 6 desborde
 // =====================================================================
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -25,7 +27,7 @@
 using namespace std;
 namespace fs = std::filesystem;
 
-using Matriz = vector<vector<long long>>;
+using Matriz = vector<vector<double>>;
 
 enum CodigoSalida { OK = 0, USO = 1, ARCHIVO = 2, SEPARADOR = 3, FORMATO = 4, DIMENSIONES = 5, DESBORDE = 6 };
 
@@ -42,14 +44,42 @@ static string mostrarSeparador(char sep) {
     return string("'") + sep + "'";
 }
 
-// Valida que el token sea un entero: signo opcional + solo digitos
-static bool esEntero(const string& token) {
+// Valida que el token sea un numero real escrito de forma simple:
+//   signo opcional, digitos y como maximo un punto decimal con al menos
+//   un digito en total. Validos: 12  -3  +4  2.5  -0.75  .5  3.
+//   Invalidos: 12a  1.2.3  1e5  ,5  nan  inf
+static bool esNumero(const string& token) {
     size_t i = (token[0] == '-' || token[0] == '+') ? 1 : 0;
-    if (i == token.size()) return false;
+    bool hayDigito = false, hayPunto = false;
     for (; i < token.size(); i++) {
-        if (!isdigit(static_cast<unsigned char>(token[i]))) return false;
+        char c = token[i];
+        if (isdigit(static_cast<unsigned char>(c))) {
+            hayDigito = true;
+        } else if (c == '.' && !hayPunto) {
+            hayPunto = true;
+        } else {
+            return false;
+        }
     }
-    return true;
+    return hayDigito;
+}
+
+// Muestra un numero sin ceros innecesarios: 7 -> "7", 2.50 -> "2.5",
+// 0.1*3 -> "0.3" (se redondea a 6 decimales para ocultar el error de
+// representacion de los double).
+static string formatearNumero(double v) {
+    if (fabs(v) >= 1e15) {
+        ostringstream os;
+        os << setprecision(6) << scientific << v;
+        return os.str();
+    }
+    ostringstream os;
+    os << fixed << setprecision(6) << v;
+    string s = os.str();
+    s.erase(s.find_last_not_of('0') + 1);
+    if (s.back() == '.') s.pop_back();
+    if (s == "-0") s = "0";
+    return s;
 }
 
 // Valida que la ruta exista, sea completa, sea un archivo y se pueda leer
@@ -93,7 +123,7 @@ static int leerMatriz(const string& ruta, const string& nombre, char sep, Matriz
         bool sepEsBlanco = (sep == ' ' || sep == '\t');
         string contenido = sepEsBlanco ? linea : quitarEspacios(linea);
 
-        vector<long long> fila;
+        vector<double> fila;
         stringstream ss(contenido);
         string token;
         int columna = 0;
@@ -108,9 +138,9 @@ static int leerMatriz(const string& ruta, const string& nombre, char sep, Matriz
                      << " repetido o al inicio de la linea).\n";
                 return FORMATO;
             }
-            if (!esEntero(limpio)) {
+            if (!esNumero(limpio)) {
                 cerr << "[ERROR] Matriz " << nombre << ", linea " << numLinea << ", elemento " << columna
-                     << ": '" << limpio << "' no es un numero entero.\n";
+                     << ": '" << limpio << "' no es un numero valido (entero o decimal con punto).\n";
                 bool tieneDigitos = false;
                 for (char c : limpio) if (isdigit(static_cast<unsigned char>(c))) tieneDigitos = true;
                 if (tieneDigitos) {
@@ -119,7 +149,9 @@ static int leerMatriz(const string& ruta, const string& nombre, char sep, Matriz
                 return FORMATO;
             }
             try {
-                fila.push_back(stoll(limpio));
+                double valor = stod(limpio);
+                if (!isfinite(valor)) throw out_of_range("valor");
+                fila.push_back(valor);
             } catch (const out_of_range&) {
                 cerr << "[ERROR] Matriz " << nombre << ", linea " << numLinea << ": el valor '"
                      << limpio << "' es demasiado grande.\n";
@@ -147,20 +179,18 @@ static int leerMatriz(const string& ruta, const string& nombre, char sep, Matriz
     return OK;
 }
 
-// C (filas(A) x columnas(B)) = A x B. Devuelve false si hay desborde.
+// C (filas(A) x columnas(B)) = A x B. Devuelve false si algun resultado
+// se desborda (queda infinito o indefinido).
 static bool multiplicar(const Matriz& a, const Matriz& b, Matriz& c) {
     size_t n = a.size(), k = b.size(), p = b[0].size();
-    c.assign(n, vector<long long>(p, 0));
+    c.assign(n, vector<double>(p, 0.0));
     for (size_t i = 0; i < n; i++) {
         for (size_t j = 0; j < p; j++) {
-            long long suma = 0;
+            double suma = 0.0;
             for (size_t t = 0; t < k; t++) {
-                long long prod;
-                if (__builtin_mul_overflow(a[i][t], b[t][j], &prod) ||
-                    __builtin_add_overflow(suma, prod, &suma)) {
-                    return false;
-                }
+                suma += a[i][t] * b[t][j];
             }
+            if (!isfinite(suma)) return false;
             c[i][j] = suma;
         }
     }
@@ -170,13 +200,13 @@ static bool multiplicar(const Matriz& a, const Matriz& b, Matriz& c) {
 static void imprimirMatriz(const string& titulo, const Matriz& m) {
     size_t ancho = 1;
     for (const auto& fila : m)
-        for (long long v : fila) ancho = max(ancho, to_string(v).size());
+        for (double v : fila) ancho = max(ancho, formatearNumero(v).size());
 
     cout << titulo << " (" << m.size() << "x" << m[0].size() << "):\n";
     for (const auto& fila : m) {
         cout << "  ";
         for (size_t j = 0; j < fila.size(); j++) {
-            cout << setw(static_cast<int>(ancho)) << fila[j] << (j + 1 < fila.size() ? "  " : "");
+            cout << setw(static_cast<int>(ancho)) << formatearNumero(fila[j]) << (j + 1 < fila.size() ? "  " : "");
         }
         cout << "\n";
     }
@@ -210,9 +240,10 @@ int main(int argc, char* argv[]) {
         return SEPARADOR;
     }
     char sep = sepStr[0];
-    if (isdigit(static_cast<unsigned char>(sep)) || sep == '-' || sep == '+' || sep == '\n' || sep == '\r') {
+    if (isdigit(static_cast<unsigned char>(sep)) || sep == '-' || sep == '+' || sep == '.' ||
+        sep == '\n' || sep == '\r') {
         cerr << "[ERROR] El separador " << mostrarSeparador(sep)
-             << " no es valido (no puede ser un digito, signo ni salto de linea).\n";
+             << " no es valido (no puede ser un digito, signo, punto decimal ni salto de linea).\n";
         return SEPARADOR;
     }
 
