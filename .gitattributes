@@ -1,0 +1,3 @@
+# Archivos de datos binarios (struct completo): git no debe convertir saltos de linea ni mostrar diffs de texto
+data/USUARIOS.txt binary
+data/PERFILES.txt binary

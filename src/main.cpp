@@ -120,7 +120,7 @@ static int ejecutarPrograma(const vector<string>& argumentos) {
 static bool autenticarUsuario(const vector<Usuario>& listaUsuarios, const string& usuario,
                               const string& password, Usuario& usuarioAutenticado) {
     for (const auto& u : listaUsuarios) {
-        if (u.username == usuario && u.password == password) {
+        if (usuario == u.username && password == u.password) {
             usuarioAutenticado = u;
             return true;
         }
@@ -141,12 +141,13 @@ struct Sesion {
 
 static bool tienePermiso(const Sesion& s, int opcion) {
     if (opcion == 0) return true;                                   // salir siempre
-    if (opcion == 1 && s.usuario.perfil != s.cfg.adminPerfil) return false;
+    if (opcion == 1 && s.cfg.adminPerfil != s.usuario.perfil) return false;
     return s.perfil.tienePermiso(opcion);
 }
 
 static void mostrarEncabezado(const Sesion& s) {
-    cout << "\n======================================\n";
+    limpiarPantalla();
+    cout << "======================================\n";
     cout << "        SISTOPE - MENU PRINCIPAL\n";
     cout << "======================================\n";
     cout << "Usuario: " << s.usuario.username << " (" << s.usuario.nombre << ")"
@@ -158,7 +159,8 @@ static void mostrarEncabezado(const Sesion& s) {
 // Opcion 1: llama al programa de ADMINISTRACION DE USUARIOS Y PERFILES
 // ---------------------------------------------------------------------
 static void opcionAdministracion(const Sesion& s) {
-    ejecutarPrograma({s.cfg.adminBin, s.usuario.username});
+    int codigo = ejecutarPrograma({s.cfg.adminBin, s.usuario.username});
+    if (codigo != 0) pausar();   // hubo un error: se deja leer el mensaje
 }
 
 // ---------------------------------------------------------------------
@@ -187,9 +189,13 @@ static string pedirRutaArchivo(const string& mensaje) {
 }
 
 static void opcionMultiplicarMatrices(const Sesion& s) {
-    cout << "\n--- Multiplicacion de matrices NxM ---\n";
+    limpiarPantalla();
+    cout << "======================================\n";
+    cout << "     MULTIPLICACION DE MATRICES NxM\n";
+    cout << "======================================\n";
     cout << "Ingrese las rutas de los archivos con las matrices (0 para volver).\n";
-    cout << "(Ej: data/test_matrices/A.txt y data/test_matrices/B.txt con separador #)\n";
+    cout << "Los elementos pueden ser enteros o decimales con punto (ej: 2.5).\n";
+    cout << "(Ej: data/test_matrices/A.txt y data/test_matrices/B.txt con separador #)\n\n";
 
     string rutaA = pedirRutaArchivo("Ruta archivo A: ");
     if (rutaA.empty()) return;
@@ -216,7 +222,10 @@ static void opcionMultiplicarMatrices(const Sesion& s) {
 // Opcion 3: Juego (segun enunciado: mensaje en construccion)
 // ---------------------------------------------------------------------
 static void opcionJuego() {
-    cout << "\n--- Juego ---\n";
+    limpiarPantalla();
+    cout << "======================================\n";
+    cout << "                JUEGO\n";
+    cout << "======================================\n";
     cout << "Funcionalidad EN CONSTRUCCION.\n";
     pausar();
 }
@@ -227,7 +236,8 @@ static void opcionJuego() {
 static void opcionCalcularFuncion() {
     int opcion = -1;
     do {
-        cout << "\n======================================\n";
+        limpiarPantalla();
+        cout << "======================================\n";
         cout << "     CALCULAR f(x) = x*x + 2x + 8\n";
         cout << "======================================\n";
         cout << "1) Ingresar valor de x\n";
@@ -248,8 +258,10 @@ static void opcionCalcularFuncion() {
             cout << "f(" << xs << ") = " << formatearReal(cuadrado) << " + "
                  << dobleTxt << " + 8\n";
             cout << "f(" << xs << ") = " << formatearReal(resultado) << "\n";
+            pausar("\nPresione ENTER para continuar...");
         } else if (opcion != 0) {
             cout << "Opcion no valida.\n";
+            pausar("Presione ENTER para continuar...");
         }
     } while (opcion != 0);
 }
@@ -270,8 +282,13 @@ static void menuPrincipal(const Sesion& s) {
     };
 
     int opcion = -1;
+    string aviso;   // mensaje a mostrar en la proxima pantalla (error, acceso denegado)
     do {
         mostrarEncabezado(s);
+        if (!aviso.empty()) {
+            cout << aviso << "\n--------------------------------------\n";
+            aviso.clear();
+        }
         for (int i = 0; i <= OPCION_MAXIMA_MENU; i++) {
             cout << i << ") " << nombres[i];
             if (!tienePermiso(s, i)) cout << "   [sin permiso]";
@@ -281,17 +298,20 @@ static void menuPrincipal(const Sesion& s) {
         opcion = leerEntero("Seleccione una opcion: ");
 
         if (opcion < 0 || opcion > OPCION_MAXIMA_MENU) {
-            cout << "\nOpcion no valida. Ingrese un numero entre 0 y " << OPCION_MAXIMA_MENU << ".\n";
+            aviso = "Opcion no valida. Ingrese un numero entre 0 y " + to_string(OPCION_MAXIMA_MENU) + ".";
             continue;
         }
         if (!tienePermiso(s, opcion)) {
-            cout << "\nACCESO DENEGADO: su perfil (" << s.usuario.perfil
-                 << ") no tiene permiso para la opcion " << opcion << ".\n";
+            aviso = "ACCESO DENEGADO: su perfil (" + string(s.usuario.perfil) +
+                    ") no tiene permiso para la opcion " + to_string(opcion) + ".";
             continue;
         }
 
         switch (opcion) {
-            case 0: cout << "\nCerrando sesion y saliendo del sistema...\n"; break;
+            case 0:
+                limpiarPantalla();
+                cout << "Sesion cerrada. Hasta luego, " << s.usuario.nombre << ".\n";
+                break;
             case 1: opcionAdministracion(s); break;
             case 2: opcionMultiplicarMatrices(s); break;
             case 3: opcionJuego(); break;
@@ -299,8 +319,8 @@ static void menuPrincipal(const Sesion& s) {
             case 5: opcionCalcularFuncion(); break;
             case 6:
                 if (s.archivoF.empty()) {
-                    cout << "\nNo se indico un archivo con -f al ejecutar el programa.\n";
-                    cout << "Ejemplo: ./bin/SistOpe -u usuario -p clave -f \"/ruta/archivo.txt\"\n";
+                    aviso = "No se indico un archivo con -f al ejecutar el programa.\n"
+                            "Ejemplo: ./bin/SistOpe -u usuario -p clave -f \"/ruta/archivo.txt\"";
                 } else {
                     conteoSobreTexto(s.archivoF);
                 }
@@ -340,7 +360,8 @@ int main(int argc, char* argv[]) {
     } else {
         cerr << "[ADVERTENCIA] El perfil '" << s.usuario.perfil << "' no existe en "
              << s.cfg.perfilFile << ". Solo podra usar la opcion 0 (Salir).\n";
-        s.perfil.nombre = s.usuario.perfil;
+        s.cfg.huboAdvertencias = true;
+        copiarTexto(s.perfil.nombre, LARGO_PERFIL, s.usuario.perfil);
     }
 
     if (!s.archivoF.empty()) {
@@ -348,10 +369,12 @@ int main(int argc, char* argv[]) {
         if (!fs::is_regular_file(s.archivoF, ec)) {
             cerr << "[ADVERTENCIA] El archivo indicado con -f no existe o no es un archivo: "
                  << s.archivoF << "\n";
+            s.cfg.huboAdvertencias = true;
         }
     }
 
-    cout << "Bienvenido/a, " << s.usuario.nombre << ".\n";
+    // las advertencias se muestran antes de que la primera pantalla limpie la consola
+    if (s.cfg.huboAdvertencias) pausar("\nPresione ENTER para continuar...");
     menuPrincipal(s);
     return 0;
 }

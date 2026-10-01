@@ -8,8 +8,10 @@
 using namespace std;
 
 void conteoSobreArchivo(const string& carpetaSugerida) {
+    string aviso;
     while (true) {
-        cout << "\n=================================\n";
+        limpiarPantalla();
+        cout << "=================================\n";
         cout << "      CONTEO SOBRE ARCHIVO\n";
         cout << "=================================\n";
         cout << "Ingrese la ruta de un archivo de texto.\n";
@@ -17,11 +19,15 @@ void conteoSobreArchivo(const string& carpetaSugerida) {
             cout << "(Ej: " << carpetaSugerida << "/ciencia_ficcion/frankenstein_mary_shelley.txt)\n";
         }
         cout << "Escriba 0 para VOLVER al menu principal.\n";
+        if (!aviso.empty()) {
+            cout << aviso << "\n";
+            aviso.clear();
+        }
         string ruta = leerLinea("Ruta: ");
 
         if (ruta == "0") return;
         if (ruta.empty()) {
-            cout << "Debe ingresar una ruta.\n";
+            aviso = "Debe ingresar una ruta.";
             continue;
         }
         // permite pegar rutas entre comillas

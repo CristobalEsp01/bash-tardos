@@ -32,6 +32,7 @@ Config cargarConfiguracion(const string& rutaEnv) {
     } else {
         cerr << "[ADVERTENCIA] No se encontro el archivo " << rutaEnv
              << ". Se usaran valores por defecto.\n";
+        cfg.huboAdvertencias = true;
     }
 
     // Resuelve una variable: entorno del sistema > .env > defecto
@@ -44,6 +45,7 @@ Config cargarConfiguracion(const string& rutaEnv) {
         } else if (archivo.is_open()) {
             cerr << "[ADVERTENCIA] Variable " << clave << " no definida en " << rutaEnv
                  << ", se usa el valor por defecto: " << destino << "\n";
+            cfg.huboAdvertencias = true;
         }
     };
 

@@ -52,7 +52,8 @@ int main(int argc, char* argv[]) {
 
     int opcion = -1;
     do {
-        cout << "\n======================================\n";
+        limpiarPantalla();
+        cout << "======================================\n";
         cout << "  ADMINISTRACION DE USUARIOS Y PERFILES\n";
         cout << "======================================\n";
         cout << "Usuario: " << username << "   |   Perfil: " << perfilActual << "\n";
@@ -64,7 +65,6 @@ int main(int argc, char* argv[]) {
 
         switch (opcion) {
             case 0:
-                cout << "Volviendo al MENU PRINCIPAL...\n";
                 break;
             case 1:
                 menuGestionUsuarios(usuarios, cfg.userFile, nombresPerfiles(perfiles), username);
@@ -74,6 +74,7 @@ int main(int argc, char* argv[]) {
                 break;
             default:
                 cout << "Opcion no valida. Intente de nuevo.\n";
+                pausar("Presione ENTER para continuar...");
         }
     } while (opcion != 0);
 

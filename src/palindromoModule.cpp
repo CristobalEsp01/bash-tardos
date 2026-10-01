@@ -26,7 +26,8 @@ bool validarPalindromo(const string& texto) {
 
 void menuPalindromo() {
     while (true) {
-        cout << "\n===============================\n";
+        limpiarPantalla();
+        cout << "===============================\n";
         cout << "        ES PALINDROMO?\n";
         cout << "===============================\n";
         string texto = leerLinea("Escriba un texto: ");
@@ -39,10 +40,7 @@ void menuPalindromo() {
             opcion = leerEntero("Seleccione una opcion: ");
         }
 
-        if (opcion == 2) {
-            cout << "Volviendo al MENU PRINCIPAL...\n";
-            return;
-        }
+        if (opcion == 2) return;   // Cancelar: vuelve al MENU PRINCIPAL
 
         if (texto.empty()) {
             cout << "\nNo ingreso ningun texto.\n";
@@ -51,5 +49,6 @@ void menuPalindromo() {
         } else {
             cout << "\n\"" << texto << "\" NO es un palindromo.\n";
         }
+        pausar("\nPresione ENTER para continuar...");
     }
 }

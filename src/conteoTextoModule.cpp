@@ -58,7 +58,8 @@ bool contarArchivo(const string& rutaArchivo, ResultadoConteo& r) {
 
 void conteoSobreTexto(const string& rutaArchivo) {
     ResultadoConteo r;
-    cout << "\n=================================\n";
+    limpiarPantalla();
+    cout << "=================================\n";
     cout << "        CONTEO SOBRE TEXTO\n";
     cout << "=================================\n";
     cout << "Archivo: " << rutaArchivo << "\n";

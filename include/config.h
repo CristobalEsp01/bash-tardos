@@ -14,6 +14,8 @@ struct Config {
     std::string multiBin   = "bin/multi";          // MULTI_BIN
     std::string librosDir  = "data/LIBROS";        // LIBROS_DIR
     std::string adminPerfil = "ADMIN";             // ADMIN_PERFIL
+
+    bool huboAdvertencias = false;   // true si falto el .env o alguna variable
 };
 
 // Carga la configuracion. Prioridad: variable de entorno del sistema

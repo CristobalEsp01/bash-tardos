@@ -2,16 +2,34 @@
 #define UTILS_H
 
 #include <cstdlib>
-#include <fstream>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <sstream>
 #include <string>
 
+#include <unistd.h>
+
 // ---------------------------------------------------------------------
 // Utilidades compartidas por todos los programas del sistema
 // ---------------------------------------------------------------------
+
+// Limpia la consola usando secuencias ANSI (no usa system("clear")).
+// Si la salida no es una terminal (ej: redirigida a un archivo) no hace
+// nada, para no ensuciar la salida con codigos de control.
+inline void limpiarPantalla() {
+    if (isatty(STDOUT_FILENO)) {
+        std::cout << "\033[2J\033[3J\033[H" << std::flush;   // borrar pantalla + historial, cursor arriba
+    }
+}
+
+// Copia un texto a un arreglo char de tamano fijo (campos de los struct
+// que se guardan en binario). Siempre deja el '\0' final.
+inline void copiarTexto(char* destino, size_t tamano, const std::string& origen) {
+    std::memset(destino, 0, tamano);
+    std::strncpy(destino, origen.c_str(), tamano - 1);
+}
 
 // Limpia el estado de error de cin y descarta lo que quede en la linea
 inline void limpiarBuffer() {
@@ -123,22 +141,6 @@ inline char letraBase(unsigned int cp) {
 
 inline bool esVocal(char base) {
     return base == 'a' || base == 'e' || base == 'i' || base == 'o' || base == 'u';
-}
-
-// Antes de agregar un registro al final de un archivo, se asegura de que
-// la ultima linea termine en salto de linea (si no, el nuevo registro
-// quedaria pegado al anterior y se corromperia el archivo).
-inline void asegurarSaltoDeLineaFinal(const std::string& ruta) {
-    std::ifstream in(ruta, std::ios::binary | std::ios::ate);
-    if (!in.is_open() || in.tellg() == 0) return;
-    in.seekg(-1, std::ios::end);
-    char ultimo = 0;
-    in.get(ultimo);
-    in.close();
-    if (ultimo != '\n') {
-        std::ofstream out(ruta, std::ios::app);
-        out << '\n';
-    }
 }
 
 // Formatea un numero real sin ceros innecesarios (19.25 y no 19.250000)
