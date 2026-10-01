@@ -81,27 +81,210 @@ Largos máximos: nombre 49 caracteres; username, password y perfil 19 caracteres
 
 ### Programa multiplicador de matrices (`bin/multi`)
 
-Es un programa independiente que el menú invoca en la opción 2. También se puede ejecutar directamente:
+`multi` es un **programa independiente** (código en `src/matmul.cpp`). No forma parte del ejecutable del menú: el menú lo ejecuta como un proceso aparte.
+
+#### 1. Cómo lo llama el menú (opción 2)
+
+1. El menú pide la ruta del archivo A, la del archivo B y el separador. Si el usuario escribe una ruta relativa (`data/test_matrices/A.txt`), el menú la convierte en ruta completa, porque `multi` solo acepta rutas completas.
+2. El menú ejecuta `multi` con llamadas a sistema:
+   - `fork()` crea un proceso hijo, copia del menú;
+   - `execv()` reemplaza ese hijo por el programa `bin/multi` (ruta `MULTI_BIN` del `.env`) y le pasa los argumentos;
+   - `waitpid()` deja al menú esperando hasta que `multi` termine.
+3. Al terminar, el menú lee el **código de salida** de `multi`. Si es distinto de 0, muestra "La multiplicacion no se pudo realizar (codigo N)".
+
+`multi` hereda la terminal del menú, así que escribe directamente en la misma pantalla.
+
+#### 2. Argumentos
 
 ```bash
-./bin/multi "/ruta/completa/A.txt" "/ruta/completa/B.txt" "#" <usuario> <perfil>
-# ejemplo
+./bin/multi "<ruta completa A.txt>" "<ruta completa B.txt>" "<separador>" <usuario> <perfil>
+
+# ejemplo (desde la raíz del proyecto)
 ./bin/multi "$PWD/data/test_matrices/A.txt" "$PWD/data/test_matrices/B.txt" "#" MaxAR ADMIN
 ```
 
-- Recibe las **rutas completas** de A y B, el **separador**, el **usuario** y el **perfil** (estos dos se muestran por pantalla).
-- Valida:
-  - que las rutas sean absolutas, que existan y que se puedan leer;
-  - que el separador sea un solo carácter válido;
-  - que cada elemento sea un número **entero o decimal** con punto (`3`, `-2`, `2.5`, `-0.75`); cualquier otra cosa (`12a`, `1.2.3`, `1e5`, `2,5`) se rechaza, lo que también detecta un separador equivocado;
-  - que no haya elementos vacíos y que todas las filas tengan las mismas columnas;
-  - que la multiplicación sea posible (columnas de A = filas de B);
-  - que no haya desborde numérico.
-- Códigos de salida: `0` ok, `1` uso incorrecto, `2` archivo inválido, `3` separador inválido, `4` formato/contenido inválido, `5` dimensiones incompatibles, `6` desborde.
+| Posición | Argumento | Uso |
+|---|---|---|
+| 1 | Ruta completa del archivo A | Matriz de la izquierda |
+| 2 | Ruta completa del archivo B | Matriz de la derecha |
+| 3 | Separador | Carácter que separa los elementos de cada fila |
+| 4 | Usuario | Se muestra en el encabezado |
+| 5 | Perfil | Se muestra en el encabezado |
 
-El resultado se muestra sin ceros innecesarios (`2.5` y no `2.500000`), redondeado a 6 decimales. Como el punto es el separador decimal, no puede usarse como separador de elementos.
+Si no recibe exactamente 5 argumentos, muestra cómo se usa y termina con código `1`.
 
-Desde el menú se pueden escribir rutas relativas (por ejemplo `data/test_matrices/A.txt`): el menú las convierte en rutas completas antes de llamar a `multi`.
+#### 3. Formato de los archivos
+
+Cada archivo contiene **una matriz**: una fila por línea y los elementos separados por el separador. Los elementos pueden ser **enteros o decimales con punto**.
+
+```
+1#2.5#0
+-1#3#4
+```
+
+- Se ignoran las líneas en blanco y los espacios alrededor de cada número (`1 # 2.5` es válido).
+- Se aceptan archivos con saltos de línea de Windows (`\r\n`).
+- Números válidos: `12`, `-3`, `+4`, `2.5`, `-0.75`, `.5`, `3.`
+- Números inválidos: `12a`, `1.2.3`, `1e5`, `2,5`, `abc`, `nan`
+
+#### 4. Qué hace `multi`, paso a paso
+
+La función `main` sigue este orden. Si un paso falla, muestra un mensaje `[ERROR]` que dice qué está mal y dónde, y termina con su código de salida **sin multiplicar**.
+
+| Paso | Qué hace | Si falla |
+|---|---|---|
+| 1 | Verifica que haya 5 argumentos y muestra el encabezado con usuario y perfil | código `1` |
+| 2 | Valida el separador: un solo carácter, que no sea dígito, `+`, `-`, `.` ni salto de línea (se confundirían con los números) | código `3` |
+| 3 | Valida cada archivo: ruta completa, que exista, que sea un archivo y que se pueda leer (`validarArchivo`) | código `2` |
+| 4 | Lee y valida la matriz A y luego la B (`leerMatriz`, ver punto 5) | código `4` |
+| 5 | Muestra ambas matrices con sus dimensiones | — |
+| 6 | Verifica que se puedan multiplicar: **columnas de A = filas de B** | código `5` |
+| 7 | Multiplica (`multiplicar`, ver punto 6) y verifica que ningún resultado se desborde | código `6` |
+| 8 | Muestra la matriz resultado y termina con código `0` | — |
+
+#### 5. Lectura y validación de una matriz (`leerMatriz`)
+
+El archivo se lee **línea por línea**. Para cada línea:
+
+1. Se quita el `\r` final (Windows). Si la línea queda vacía, se salta.
+2. Se divide la línea en elementos usando el separador.
+3. Para cada elemento:
+   - se quitan los espacios de los extremos;
+   - si quedó vacío, es un error: separador repetido (`1##2`) o al inicio de la línea;
+   - se valida con `esNumero`: signo opcional, solo dígitos y como máximo un punto, con al menos un dígito;
+   - se convierte a `double` con `stod`. Si el número es tan grande que no cabe en un `double`, es un error.
+4. Si la línea termina con el separador (`1#2#`), es un error: falta un elemento.
+5. La fila debe tener **la misma cantidad de columnas que la primera fila**. Si no, es un error que indica la línea y las columnas encontradas.
+
+Al final, si el archivo no tenía ninguna fila, también es un error.
+
+Como cada elemento se valida completo, un **separador equivocado** se detecta solo: si el archivo usa `#` y se indica `,`, la fila `1#2.5#0` queda como un único elemento que no es un número válido.
+
+#### 6. El algoritmo de multiplicación (`multiplicar`)
+
+Si **A** es de **n × k** y **B** es de **k × p**, el resultado **C = A × B** es de **n × p**. Cada elemento de C es la suma de los productos de la **fila i de A** por la **columna j de B**:
+
+```
+C[i][j] = A[i][0]·B[0][j] + A[i][1]·B[1][j] + ... + A[i][k-1]·B[k-1][j]
+```
+
+Por eso es obligatorio que las **columnas de A (k)** sean iguales a las **filas de B (k)**: cada fila de A tiene que tener tantos elementos como cada columna de B.
+
+En el código son tres ciclos anidados:
+
+```cpp
+static bool multiplicar(const Matriz& a, const Matriz& b, Matriz& c) {
+    size_t n = a.size(), k = b.size(), p = b[0].size();
+    c.assign(n, vector<double>(p, 0.0));            // C de n filas y p columnas, en cero
+    for (size_t i = 0; i < n; i++) {                // cada fila de A
+        for (size_t j = 0; j < p; j++) {            // cada columna de B
+            double suma = 0.0;
+            for (size_t t = 0; t < k; t++) {        // recorre la fila i de A y la columna j de B
+                suma += a[i][t] * b[t][j];
+            }
+            if (!isfinite(suma)) return false;      // desborde: el resultado no cabe en un double
+            c[i][j] = suma;
+        }
+    }
+    return true;
+}
+```
+
+- **Tipo de dato:** las matrices son `vector<vector<double>>`, así que funcionan con enteros y decimales.
+- **Desborde:** si un resultado es demasiado grande, el `double` queda como infinito. `isfinite` lo detecta y `multi` termina con código `6` en vez de mostrar un valor incorrecto.
+- **Costo:** se hacen n · p · k multiplicaciones. Para dos matrices de 100 × 100 son 1.000.000.
+
+#### 7. Ejemplo resuelto
+
+`A.txt` (2 × 3) y `B.txt` (3 × 2), separador `#`:
+
+```
+A.txt            B.txt
+1#2.5#0          2#1
+-1#3#4           0.5#-2
+                 3#0
+```
+
+A tiene 3 columnas y B tiene 3 filas, así que se pueden multiplicar, y el resultado es de 2 × 2:
+
+| Celda | Fila de A · Columna de B | Cálculo | Resultado |
+|---|---|---|---|
+| C[0][0] | (1, 2.5, 0) · (2, 0.5, 3) | 1·2 + 2.5·0.5 + 0·3 = 2 + 1.25 + 0 | **3.25** |
+| C[0][1] | (1, 2.5, 0) · (1, -2, 0) | 1·1 + 2.5·(-2) + 0·0 = 1 - 5 + 0 | **-4** |
+| C[1][0] | (-1, 3, 4) · (2, 0.5, 3) | (-1)·2 + 3·0.5 + 4·3 = -2 + 1.5 + 12 | **11.5** |
+| C[1][1] | (-1, 3, 4) · (1, -2, 0) | (-1)·1 + 3·(-2) + 4·0 = -1 - 6 + 0 | **-7** |
+
+Salida de `multi`:
+
+```
+======================================
+     MULTIPLICADOR DE MATRICES NxM
+======================================
+Usuario: MaxAR   |   Perfil: ADMIN
+--------------------------------------
+Archivo A: /home/usuario/A.txt
+Archivo B: /home/usuario/B.txt
+Separador: '#'
+
+Matriz A (2x3):
+    1  2.5    0
+   -1    3    4
+Matriz B (3x2):
+    2    1
+  0.5   -2
+    3    0
+
+Resultado A x B (2x2):
+  3.25    -4
+  11.5    -7
+```
+
+Cada número se muestra **sin ceros innecesarios** (`3.25`, no `3.250000`) y redondeado a 6 decimales (`formatearNumero`). Así un cálculo como `0.1·3` se muestra `0.3` y no `0.30000000000000004`, que es como lo guarda internamente un `double`. Las columnas se alinean según el número más largo de cada matriz.
+
+#### 8. Ejemplos de errores
+
+```
+# A (2x3) por A (2x3): columnas de A (3) ≠ filas de B (2)          -> código 5
+[ERROR] No es posible multiplicar: A es 2x3 y B es 2x3.
+        Las columnas de A (3) deben ser iguales a las filas de B (2).
+
+# una letra dentro de la matriz                                     -> código 4
+[ERROR] Matriz A, linea 2, elemento 2: 'x' no es un numero valido (entero o decimal con punto).
+
+# separador equivocado (el archivo usa '#', se indicó ',')          -> código 4
+[ERROR] Matriz A, linea 1, elemento 1: '1#2.5#0' no es un numero valido (entero o decimal con punto).
+
+# filas de distinto largo                                           -> código 4
+[ERROR] Matriz A: la linea 2 tiene 2 columnas, pero las filas anteriores tienen 3.
+
+# ruta relativa al ejecutar multi directamente                      -> código 2
+[ERROR] La ruta del archivo A debe ser completa (absoluta): A.txt
+```
+
+#### 9. Códigos de salida
+
+| Código | Significado |
+|---|---|
+| `0` | Multiplicación realizada correctamente |
+| `1` | Uso incorrecto (cantidad de argumentos, usuario o perfil vacíos) |
+| `2` | Archivo inválido (ruta no completa, no existe, no es archivo o no se puede leer) |
+| `3` | Separador inválido |
+| `4` | Formato o contenido inválido (elemento que no es número, vacío, filas de distinto largo, archivo vacío) |
+| `5` | Dimensiones incompatibles (columnas de A ≠ filas de B) |
+| `6` | Desborde numérico en el resultado |
+
+#### 10. Funciones de `src/matmul.cpp`
+
+| Función | Responsabilidad |
+|---|---|
+| `main` | Orquesta los pasos del punto 4 y devuelve el código de salida |
+| `validarArchivo` | Ruta completa, existe, es archivo, se puede leer |
+| `leerMatriz` | Lee el archivo línea por línea y valida formato y contenido |
+| `esNumero` | Decide si un texto es un número entero o decimal válido |
+| `multiplicar` | Calcula C = A × B con tres ciclos y detecta desborde |
+| `formatearNumero` | Muestra un número sin ceros innecesarios |
+| `imprimirMatriz` | Muestra una matriz alineada, con su título y dimensiones |
+| `quitarEspacios`, `mostrarSeparador` | Auxiliares: limpiar espacios y mostrar el separador en los mensajes |
 
 ### Carpeta de libros (`data/LIBROS`)
 
