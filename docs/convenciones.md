@@ -14,7 +14,7 @@ Cada cosa va en su lugar. No se crean archivos sueltos en la raíz.
 | `include/` | Headers `.h` | Código con lógica (salvo funciones `inline` cortas en `utils.h`) |
 | `bin/` | Ejecutables compilados (`SistOpe`, `admin`, `multi`) | Cualquier otra cosa |
 | `obj/` | Objetos `.o` (los genera `make`, **no se suben**) | — |
-| `data/` | Archivos de datos: `USUARIOS.txt`, `PERFILES.txt`, `test_matrices/`, `LIBROS/` | Código |
+| `data/` | Archivos de datos: `USUARIOS.txt` y `PERFILES.txt` (binarios), `test_matrices/`, `LIBROS/` | Código |
 | `docs/` | Enunciados y documentación del grupo | Código |
 
 La raíz solo tiene: `Makefile`, `README.md`, `.env.example` y `.gitignore`.
@@ -83,19 +83,24 @@ Estas reglas existen porque ya hubo errores por no seguirlas.
 ### 4.2 Menús
 
 - Siempre tienen título y una opción **0** para salir o volver.
+- **Cada pantalla empieza con `limpiarPantalla()`** (de `utils.h`). Si la pantalla muestra un resultado, termina con `pausar(...)` para que el usuario alcance a leerlo antes de que se limpie la consola. Los errores cortos del menú principal se muestran en la siguiente pantalla (variable `aviso`).
+- Nunca usar `system("clear")` (ver 4.5).
 - El menú principal muestra el **usuario y su perfil** en el encabezado.
 - Una opción inválida muestra un mensaje y vuelve a preguntar; nunca rompe el programa.
 
 ### 4.3 Archivos de datos (`struct` completo)
 
-- `Usuario` y `Perfil` se leen y escriben **como struct completo** con los operadores `<<` y `>>`:
+- `Usuario` y `Perfil` se leen y escriben **como struct completo en binario** (archivo abierto con `ios::binary`):
   ```cpp
-  archivo << usuario << '\n';        // escribir
-  while (archivo >> usuario) { ... } // leer
+  archivo.write(reinterpret_cast<const char*>(&usuario), sizeof(Usuario));    // escribir
+  while (archivo.read(reinterpret_cast<char*>(&usuario), sizeof(Usuario))) {  // leer
+      ...
+  }
   ```
-  No se arma ni se separa la línea "a mano" fuera de esos operadores.
-- Antes de **agregar** un registro al final de un archivo, llamar a `asegurarSaltoDeLineaFinal(ruta)`, para que el registro no quede pegado a la última línea.
-- Ningún campo puede contener `;`, porque es el separador del archivo.
+- Un struct que se guarda así **no puede tener `std::string`, `std::vector` ni punteros**: solo tipos de tamaño fijo (`int`, `bool`, arreglos `char`). El `static_assert(is_trivially_copyable<...>)` del header lo verifica al compilar; no se borra.
+- Para guardar un texto en un campo `char[]` se usa `copiarTexto(destino, LARGO_X, texto)`, nunca `strcpy`. Antes, se valida que el texto no supere `LARGO_X - 1` caracteres.
+- Si se cambia un struct (agregar un campo o cambiar un largo), **los archivos de datos existentes dejan de ser compatibles**: hay que regenerarlos y avisar al grupo.
+- `USUARIOS.txt` y `PERFILES.txt` son binarios: **no se editan a mano**. Se modifican desde la opción 1 del sistema.
 - Si hay que eliminar un registro, se reescribe el archivo completo desde la lista en memoria.
 
 ### 4.4 Configuración: todo en el `.env`

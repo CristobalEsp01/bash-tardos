@@ -20,7 +20,7 @@
 
 ### Funcionalidades del MENÚ PRINCIPAL
 
-Al iniciar, el sistema autentica al usuario con `-u` y `-p`. La interfaz muestra siempre el **título**, el **nombre de usuario** y su **perfil**. Las opciones son:
+Al iniciar, el sistema autentica al usuario con `-u` y `-p`. La interfaz muestra siempre el **título**, el **nombre de usuario** y su **perfil**. La consola **se limpia en cada pantalla**: cuando hay un resultado que leer, el sistema espera un ENTER antes de pasar a la siguiente. Las opciones son:
 
 | Opción | Funcionalidad | Descripción |
 |---|---|---|
@@ -35,27 +35,49 @@ Al iniciar, el sistema autentica al usuario con `-u` y `-p`. La interfaz muestra
 
 ### Permisos por perfil
 
-Los permisos se leen desde `PERFILES.txt`. Cada perfil indica qué opciones del menú puede usar:
+Los permisos se leen desde `PERFILES.txt`. Cada perfil indica qué opciones del menú puede usar. Los perfiles de prueba son:
 
-```
-ADMIN; 0,1,2,3,4,5,6,7
-GENERAL; 0,2,3,4,5,6,7
-```
+| Perfil | Opciones permitidas |
+|---|---|
+| `ADMIN` | 0, 1, 2, 3, 4, 5, 6, 7 |
+| `GENERAL` | 0, 2, 3, 4, 5, 6, 7 |
+
+Los perfiles se crean, listan y eliminan desde la opción 1 → Gestión de Perfiles.
 
 Si un usuario elige una opción que su perfil no tiene, el sistema muestra **ACCESO DENEGADO**. Además, la opción 1 es siempre exclusiva del perfil `ADMIN` (`ADMIN_PERFIL` en el `.env`), aunque otro perfil la tenga en su lista.
 
 ### Lectura y escritura de structs
 
-`Usuario` y `Perfil` se leen y escriben **como struct completo**, mediante la sobrecarga de los operadores `<<` y `>>`:
+`Usuario` y `Perfil` se leen y escriben **como struct completo**, en binario, con `write` y `read`: cada registro del archivo es una copia exacta de los bytes del struct en memoria.
 
 ```cpp
-archivo << usuario << '\n';        // escribe el struct completo
-while (archivo >> usuario) { ... } // lee el struct completo
+// escribir (ios::binary)
+archivo.write(reinterpret_cast<const char*>(&usuario), sizeof(Usuario));
+
+// leer todos los registros
+while (archivo.read(reinterpret_cast<char*>(&usuario), sizeof(Usuario))) { ... }
 ```
 
-Formato de los registros:
-- `USUARIOS.txt` → `id;nombre;username;password;perfil`
-- `PERFILES.txt` → `NOMBRE;op1,op2,...`
+Para que esto funcione, los structs **no usan `std::string`** (que guarda un puntero a otra zona de memoria), sino arreglos `char` de tamaño fijo:
+
+```cpp
+struct Usuario {                  // 116 bytes
+    int  id;
+    char nombre[50];
+    char username[20];
+    char password[20];
+    char perfil[20];
+};
+
+struct Perfil {                   // 28 bytes
+    char nombre[20];
+    bool opciones[8];             // opciones[i] = true si el perfil puede usar la opcion i
+};
+```
+
+Por lo tanto, `USUARIOS.txt` y `PERFILES.txt` son **archivos binarios** (mantienen los nombres que pide el enunciado) y no se editan a mano: se modifican desde la opción 1. Al cargarlos, el sistema verifica que el tamaño del archivo sea múltiplo del tamaño del struct; si no lo es (archivo dañado o con formato antiguo), muestra un error en vez de cargar datos corruptos.
+
+Largos máximos: nombre 49 caracteres; username, password y perfil 19 caracteres.
 
 ### Programa multiplicador de matrices (`bin/multi`)
 
@@ -71,11 +93,13 @@ Es un programa independiente que el menú invoca en la opción 2. También se pu
 - Valida:
   - que las rutas sean absolutas, que existan y que se puedan leer;
   - que el separador sea un solo carácter válido;
-  - que cada elemento sea un número entero (detecta un separador equivocado);
+  - que cada elemento sea un número **entero o decimal** con punto (`3`, `-2`, `2.5`, `-0.75`); cualquier otra cosa (`12a`, `1.2.3`, `1e5`, `2,5`) se rechaza, lo que también detecta un separador equivocado;
   - que no haya elementos vacíos y que todas las filas tengan las mismas columnas;
   - que la multiplicación sea posible (columnas de A = filas de B);
   - que no haya desborde numérico.
 - Códigos de salida: `0` ok, `1` uso incorrecto, `2` archivo inválido, `3` separador inválido, `4` formato/contenido inválido, `5` dimensiones incompatibles, `6` desborde.
+
+El resultado se muestra sin ceros innecesarios (`2.5` y no `2.500000`), redondeado a 6 decimales. Como el punto es el separador decimal, no puede usarse como separador de elementos.
 
 Desde el menú se pueden escribir rutas relativas (por ejemplo `data/test_matrices/A.txt`): el menú las convierte en rutas completas antes de llamar a `multi`.
 
@@ -147,7 +171,7 @@ Ejemplos:
 make run ARGS='-u MaxAR -p 1001 -f data/LIBROS/fantasia/don_quijote_cervantes_es.txt'
 ```
 
-Usuarios de prueba (`data/USUARIOS.txt`):
+Usuarios de prueba (guardados en `data/USUARIOS.txt`):
 
 | Username | Password | Perfil |
 |---|---|---|
