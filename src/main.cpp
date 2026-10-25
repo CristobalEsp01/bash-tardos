@@ -7,6 +7,7 @@
 #include "conteoArchModule.h"
 #include "conteoTextoModule.h"
 #include "palindromoModule.h"
+#include "indiceInvModule.h"
 #include "profileModule.h"
 #include "userModule.h"
 #include "utils.h"
@@ -18,6 +19,7 @@
 
 #include <sys/wait.h>
 #include <unistd.h>
+
 
 using namespace std;
 namespace fs = std::filesystem;
@@ -279,6 +281,7 @@ static void menuPrincipal(const Sesion& s) {
         "Calcular f(x) = x*x + 2x + 8",
         "Conteo sobre texto (archivo de -f)",
         "Conteo sobre archivo",
+        "Crear indice invertido",
     };
 
     int opcion = -1;
@@ -326,6 +329,7 @@ static void menuPrincipal(const Sesion& s) {
                 }
                 break;
             case 7: conteoSobreArchivo(s.cfg.librosDir); break;
+            case 8: crearIndiceInvertido(s.cfg.librosDir); break;
         }
     } while (opcion != 0);
 }

@@ -12,7 +12,7 @@ TARGET_ADMIN = $(BIN_DIR)/admin
 TARGET_MULTI = $(BIN_DIR)/multi
 
 COMMON  = config.cpp userModule.cpp profileModule.cpp
-SRC_MAIN  = main.cpp palindromoModule.cpp conteoTextoModule.cpp conteoArchModule.cpp $(COMMON)
+SRC_MAIN  = main.cpp palindromoModule.cpp conteoTextoModule.cpp conteoArchModule.cpp $(COMMON) indiceInvModule.cpp
 SRC_ADMIN = admin.cpp $(COMMON)
 SRC_MULTI = matmul.cpp
 

@@ -10,7 +10,7 @@
 using namespace std;
 
 // Opcion mas alta del menu principal (0..7)
-const int OPCION_MAXIMA_MENU = 7;
+const int OPCION_MAXIMA_MENU = 8; /////AQUI CAMBIE 7 POR 8 PARA TENER LA OPCION DE CREAR INDICE INVERTIDO
 
 // ---------------------------------------------------------------------
 // Un perfil: su nombre y que opciones del MENU PRINCIPAL puede usar.
