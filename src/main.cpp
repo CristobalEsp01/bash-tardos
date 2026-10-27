@@ -221,14 +221,19 @@ static void opcionMultiplicarMatrices(const Sesion& s) {
 }
 
 // ---------------------------------------------------------------------
-// Opcion 3: Juego (segun enunciado: mensaje en construccion)
+// Opcion 3: Juego -> programa aparte (JUEGO_BIN)
 // ---------------------------------------------------------------------
 static void opcionJuego() {
     limpiarPantalla();
     cout << "======================================\n";
     cout << "                JUEGO\n";
     cout << "======================================\n";
-    cout << "Funcionalidad EN CONSTRUCCION.\n";
+
+    int codigo = ejecutarPrograma({s.cfg.juegoBin, s.usuario.username, s.usuario.perfil});
+    if (codigo > 0) {
+        cout << "\nEl juego no se pudo realizar (codigo " << codigo
+             << "). Revise el mensaje anterior.\n";
+    }
     pausar();
 }
 
