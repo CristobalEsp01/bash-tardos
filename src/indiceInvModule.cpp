@@ -8,31 +8,73 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <vector>
+#include <map>
+#include <sstream>
+#include <cctype>
 
 using namespace std;
 namespace fs = std::filesystem;
 
+queue<int> colaLibros;
+sem_t sem_elementos;
+sem_t sem_mutex;
 
-queue<int> colaLibros; // Memoria compartida para los libros 
-sem_t sem_elementos; // Contador de libros disponibles
-sem_t sem_mutex;     // Candado para proteger la cola
+map<int, string> mapaRutasGlobales;
+// Ahora guarda: palabra -> {idLibro -> cantidad}
+map<string, map<int, int>> indiceInvertidoGlobal;
 
-void procesarLibro(int idLibro) {
-    // TERMINAR IMPLEMENTACION: Abrir el archivo correspondiente al idLibro, ver su contenido, y actualizar el indice invertido.
+string limpiarPalabra(string palabra) {
+    string limpia = "";
+    for (char c : palabra) {
+        if (isalnum(c)) {
+            limpia += tolower(c);
+        }
+    }
+    return limpia;
 }
 
-void* threadTrabajador(void* arg) { // Funcion threads trabajadores
+void procesarLibro(int idLibro) {
+    string ruta = mapaRutasGlobales[idLibro];
+    ifstream archivo(ruta);
+    if (!archivo.is_open()) return;
+
+    string linea, palabra;
+    map<string, int> conteoLocal;
+
+    // Conteo de palabras local para este libro
+    while (getline(archivo, linea)) {
+        stringstream ss(linea);
+        while (ss >> palabra) {
+            string limpia = limpiarPalabra(palabra);
+            if (!limpia.empty()) {
+                conteoLocal[limpia]++;
+            }
+        }
+    }
+    archivo.close();
+
+    // Actualización del índice global (sección crítica)
+    sem_wait(&sem_mutex);
+    for (const auto& par : conteoLocal) {
+        indiceInvertidoGlobal[par.first][idLibro] += par.second;
+    }
+    sem_post(&sem_mutex);
+}
+
+void* threadTrabajador(void* arg) {
     while (true) {
+        sem_wait(&sem_elementos);
 
-        sem_wait(&sem_elementos); // Se duerme si la cola esta sin libros 
-
-        sem_wait(&sem_mutex);     // Entra a seccion critica para sacar un libro de la cola
+        sem_wait(&sem_mutex);
+        if (colaLibros.empty()) {
+            sem_post(&sem_mutex);
+            continue;
+        }
         int idLibro = colaLibros.front();
         colaLibros.pop();
-        sem_post(&sem_mutex);     // Sale de la seccion critica
+        sem_post(&sem_mutex);
 
-        // Condición de término limpia
-        if (idLibro == -1) break; 
+        if (idLibro == -1) break; // Píldora de veneno (Punto 1.11)
 
         procesarLibro(idLibro);
     }
@@ -46,15 +88,14 @@ void crearIndiceInvertido(const string& librosDir) {
     cout << "======================================\n";
 
     const char* nThreadsStr = getenv("N_THREADS");
-    const char* idxPath = getenv("INDICE_INVERTIDO_PATH"); 
-    const char* mapeoPath = getenv("MAPEO_LIBROS_PATH");   
+    const char* idxPath = getenv("INDICE_INVERTIDO_PATH");
+    const char* mapeoPath = getenv("MAPEO_LIBROS_PATH");
 
     if (!nThreadsStr || !idxPath || !mapeoPath) {
         cout << "[ERROR] Faltan variables de entorno.\n";
         pausar();
         return;
     }
-
 
     int numThreads = stoi(nThreadsStr);
     if (numThreads <= 0) return;
@@ -66,47 +107,60 @@ void crearIndiceInvertido(const string& librosDir) {
         return;
     }
 
-    // Iniciamos los semaforos
-    sem_init(&sem_elementos, 0, 0); // Inicia en 0 (aqui no hay nada en la cola)
-    sem_init(&sem_mutex, 0, 1);     // Inicia en 1 (desbloqueado)
+    sem_init(&sem_elementos, 0, 0);
+    sem_init(&sem_mutex, 0, 1);
 
     ofstream archivoMapeo(mapeoPath);
     int idLibro = 1;
 
-    // Agregamos todos los libros a la cola y creamos el archivo de mapeo
-    for (const auto& entry : fs::directory_iterator(librosDir)) {
+    // Busca en todas las subcarpetas (ej. drama/)
+    for (const auto& entry : fs::recursive_directory_iterator(librosDir)) {
         if (entry.is_regular_file()) {
+            string rutaArchivo = entry.path().string();
+            mapaRutasGlobales[idLibro] = rutaArchivo;
+            
             archivoMapeo << idLibro << ";" << entry.path().filename().string() << "\n";
             colaLibros.push(idLibro);
-            sem_post(&sem_elementos); // Sube el contador de elementos
+            sem_post(&sem_elementos);
             idLibro++;
         }
     }
     archivoMapeo.close();
 
-    // For para que los threads sepan cuándo salir
+    // Liberamos semaforos para que los threads terminen
     for (int i = 0; i < numThreads; i++) {
         colaLibros.push(-1);
         sem_post(&sem_elementos);
     }
 
-    cout << "[INFO] Lanzando " << numThreads << " threads...\n";
+    cout << "Utilizando " << numThreads << " threads...\n";
     vector<pthread_t> threads(numThreads);
 
-    // Crear los threads
     for (int i = 0; i < numThreads; i++) {
         pthread_create(&threads[i], nullptr, threadTrabajador, nullptr);
     }
 
-    // Esperar a que todos terminen su trabajo
     for (int i = 0; i < numThreads; i++) {
         pthread_join(threads[i], nullptr);
     }
 
-    // Limpiamos la memoria y los semaforos
+    // Escritura final con el formato pedido: palabra;(ID,cant);(ID,cant)
+    ofstream archivoIndice(idxPath);
+    for (const auto& par : indiceInvertidoGlobal) {
+        archivoIndice << par.first;
+        for (const auto& doc : par.second) {
+            archivoIndice << ";(" << doc.first << "," << doc.second << ")";
+        }
+        archivoIndice << "\n";
+    }
+    archivoIndice.close();
+
+    indiceInvertidoGlobal.clear();
+    mapaRutasGlobales.clear();
+
     sem_destroy(&sem_elementos);
     sem_destroy(&sem_mutex);
 
-    cout << "[OK] Construcción concurrente finalizada con éxito.\n";
+    cout << "Tarea finalizada con éxito.\n";
     pausar("Presione ENTER para volver...");
 }
