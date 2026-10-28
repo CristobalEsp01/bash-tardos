@@ -1,7 +1,7 @@
 // =============================================================================
 //  cliente.cpp - Cliente del juego BAJO/MEDIO/ALTO por sockets TCP.
 //
-//  - Se conecta a HOST:PORT (env vars, defaults 127.0.0.1:5000).
+//  - Se conecta a HOST:PORT (entorno del proceso > .env > valores por defecto).
 //  - Pide el nombre por stdin, lo envía como primera línea.
 //  - Bucle con select(): lee de stdin y del socket.
 //      * Línea del usuario -> se envía al servidor.
@@ -12,13 +12,14 @@
 //    g++ -std=c++17 -Wall -Wextra -pthread cliente.cpp -o cliente
 //
 //  Ejecutar:
-//    HOST=127.0.0.1 PORT=5000 ./cliente
+//    HOST=127.0.0.1 PORT=5000 ./bin/cliente
 //
 //  Protocolo (recordatorio):
 //    Cliente -> servidor: primer mensaje = nombre; luego líneas de acción.
 //    Servidor -> cliente: <pantalla>\n<<<FIN>>>\n
 // =============================================================================
-#include "../include/utils.h"
+#include "config.h"
+#include "utils.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -26,13 +27,14 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <string>
 
-static const char* FIN_PANTALLA = "<<<FIN>>>";
+static const char* FIN_PANTALLA = "\n<<<FIN>>>\n";
 
 // Conecta a host:puerto. Devuelve fd o -1.
 static int conectar(const std::string& host, int puerto) {
@@ -69,21 +71,22 @@ static bool enviar_linea(int fd, const std::string& linea) {
 }
 
 int main() {
-    const char* host_env = std::getenv("HOST");
-    std::string host = host_env ? host_env : "127.0.0.1";
-    const char* port_env = std::getenv("PORT");
-    int puerto = port_env ? std::atoi(port_env) : 5000;
+    Config cfg = cargarConfiguracion();
+    std::string error;
+    if (!validarConfigCliente(cfg, error)) {
+        std::cerr << "ERROR: " << error << "\n";
+        return 1;
+    }
+    const std::string& host = cfg.host;
+    int puerto = cfg.port;
 
     int fd = conectar(host, puerto);
     if (fd < 0) return 1;
 
-    // Nombre del jugador
+    // Entrada por descriptor: nombre y acciones comparten el mismo buffer.
     limpiarPantalla();
     std::cout << "Conectado a " << host << ":" << puerto << "\n"
               << "Ingresa tu nombre: " << std::flush;
-    std::string nombre;
-    if (!std::getline(std::cin, nombre)) { ::close(fd); return 0; }
-    if (!enviar_linea(fd, nombre)) { ::close(fd); return 0; }
 
     // Acumulador de la pantalla actual
     std::string buf;
@@ -96,21 +99,22 @@ int main() {
             if (pos == std::string::npos) return true;     // falta más
             std::string pantalla = buf.substr(0, pos);
             buf.erase(0, pos + std::strlen(FIN_PANTALLA));
-            // recortar el '\n' inmediatamente anterior al delimitador
-            if (!pantalla.empty() && pantalla.back() == '\n') pantalla.pop_back();
             limpiarPantalla();
-            std::cout << pantalla << std::flush;
+            std::cout << pantalla << '\n' << std::flush;
         }
     };
 
     char tmp[1024];
     bool fin = false;
+    bool entrada_activa = true;
+    bool nombre_enviado = false;
+    std::string entrada;
     while (!fin) {
         fd_set rfds;
         FD_ZERO(&rfds);
-        FD_SET(STDIN_FILENO, &rfds);
+        if (entrada_activa) FD_SET(STDIN_FILENO, &rfds);
         FD_SET(fd, &rfds);
-        int maxfd = std::max(STDIN_FILENO, fd);
+        int maxfd = entrada_activa ? std::max(STDIN_FILENO, fd) : fd;
 
         int sel = ::select(maxfd + 1, &rfds, nullptr, nullptr, nullptr);
         if (sel < 0) {
@@ -127,19 +131,38 @@ int main() {
                 fin = true;
             } else {
                 buf.append(tmp, static_cast<size_t>(n));
-                if (!procesar_buffer()) fin = true;
+                if (buf.size() > 1024 * 1024) {
+                    std::cerr << "ERROR: pantalla demasiado larga\n";
+                    fin = true;
+                } else if (!procesar_buffer()) fin = true;
             }
         }
 
         // Entrada del usuario
-        if (!fin && FD_ISSET(STDIN_FILENO, &rfds)) {
-            std::string linea;
-            if (!std::getline(std::cin, linea)) {
-                // EOF en stdin: cerramos
+        if (!fin && entrada_activa && FD_ISSET(STDIN_FILENO, &rfds)) {
+            ssize_t n = ::read(STDIN_FILENO, tmp, sizeof(tmp));
+            if (n > 0) {
+                entrada.append(tmp, static_cast<size_t>(n));
+                if (entrada.size() > 4096) {
+                    std::cerr << "ERROR: entrada demasiado larga\n";
+                    fin = true;
+                }
+            } else if (n == 0) {
+                entrada_activa = false;
+            } else if (errno != EINTR && errno != EAGAIN) {
+                std::perror("read");
                 fin = true;
-            } else {
-                if (!enviar_linea(fd, linea)) fin = true;
             }
+            while (!fin) {
+                size_t pos = entrada.find('\n');
+                if (pos == std::string::npos && (entrada_activa || entrada.empty())) break;
+                std::string linea = entrada.substr(0, pos);
+                entrada.erase(0, pos == std::string::npos ? entrada.size() : pos + 1);
+                if (!linea.empty() && linea.back() == '\r') linea.pop_back();
+                if (!enviar_linea(fd, linea)) fin = true;
+                nombre_enviado = true;
+            }
+            if (!entrada_activa && !nombre_enviado) fin = true;
         }
     }
 

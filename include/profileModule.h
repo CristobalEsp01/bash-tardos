@@ -9,13 +9,13 @@
 
 using namespace std;
 
-// Opcion mas alta del menu principal (0..7)
-const int OPCION_MAXIMA_MENU = 8; /////AQUI CAMBIE 7 POR 8 PARA TENER LA OPCION DE CREAR INDICE INVERTIDO
+// Opcion mas alta del menu principal (0..8).
+const int OPCION_MAXIMA_MENU = 8;
 
 // ---------------------------------------------------------------------
 // Un perfil: su nombre y que opciones del MENU PRINCIPAL puede usar.
 // opciones[i] == true  ->  el perfil tiene permiso para la opcion i.
-// Ej: ADMIN -> opciones 0..7      GENERAL -> opciones 0,2,3,4,5,6,7
+// Ej: ADMIN -> opciones 0..8      GENERAL -> opciones 0,2,3,4,5,6,7,8
 //
 // Igual que Usuario, es un struct de tamano FIJO que se lee y escribe
 // completo en PERFIL_FILE con read() / write() en modo binario.

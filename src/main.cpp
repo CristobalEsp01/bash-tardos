@@ -221,15 +221,36 @@ static void opcionMultiplicarMatrices(const Sesion& s) {
 }
 
 // ---------------------------------------------------------------------
-// Opcion 3: Juego -> programa aparte (JUEGO_BIN)
+// Opcion 3: iniciar servidor o conectarse como cliente.
 // ---------------------------------------------------------------------
-static void opcionJuego() {
+static void opcionJuego(const Sesion& s) {
     limpiarPantalla();
     cout << "======================================\n";
     cout << "                JUEGO\n";
     cout << "======================================\n";
+    cout << "0) Volver\n1) Iniciar servidor\n2) Conectarse como cliente\n";
 
-    int codigo = ejecutarPrograma({s.cfg.juegoBin, s.usuario.username, s.usuario.perfil});
+    const int opcion = leerEntero("Seleccione una opcion: ");
+    if (opcion == 0) return;
+    if (opcion != 1 && opcion != 2) {
+        cout << "Opcion no valida.\n";
+        pausar();
+        return;
+    }
+
+    string error;
+    if (opcion == 1 ? !validarConfigServidor(s.cfg, error)
+                    : !validarConfigCliente(s.cfg, error)) {
+        cout << "[ERROR] Configuracion del juego: " << error << "\n";
+        pausar();
+        return;
+    }
+
+    if (opcion == 1) {
+        cout << "Servidor en esta terminal. Abra otras terminales para conectar 4 clientes.\n";
+    }
+
+    const int codigo = ejecutarPrograma({opcion == 1 ? s.cfg.servidorBin : s.cfg.clienteBin});
     if (codigo > 0) {
         cout << "\nEl juego no se pudo realizar (codigo " << codigo
              << "). Revise el mensaje anterior.\n";
@@ -322,7 +343,7 @@ static void menuPrincipal(const Sesion& s) {
                 break;
             case 1: opcionAdministracion(s); break;
             case 2: opcionMultiplicarMatrices(s); break;
-            case 3: opcionJuego(); break;
+            case 3: opcionJuego(s); break;
             case 4: menuPalindromo(); break;
             case 5: opcionCalcularFuncion(); break;
             case 6:
@@ -334,7 +355,16 @@ static void menuPrincipal(const Sesion& s) {
                 }
                 break;
             case 7: conteoSobreArchivo(s.cfg.librosDir); break;
-            case 8: crearIndiceInvertido(s.cfg.librosDir); break;
+            case 8: {
+                string error;
+                if (!validarConfigIndice(s.cfg, error)) {
+                    cout << "[ERROR] Configuracion del indice: " << error << "\n";
+                    pausar();
+                } else {
+                    crearIndiceInvertido(s.cfg);
+                }
+                break;
+            }
         }
     } while (opcion != 0);
 }

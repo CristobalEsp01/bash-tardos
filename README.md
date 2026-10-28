@@ -1,4 +1,4 @@
-# SistOpe - MENÚ PRINCIPAL
+# SistOpe — Entrega 3
 
 **Asignatura:** INFO198 Sistemas Operativos
 **Grupo:** Bash-tardos
@@ -16,7 +16,8 @@
 **SistOpe** es un sistema de consola (C++17, Linux) que se construye de forma transversal durante el curso.
 
 - **Entrega 1:** módulo **Administración de Usuarios y Perfiles** (crear, listar y eliminar usuarios y perfiles guardados en `USUARIOS.txt` y `PERFILES.txt`, usando `struct`).
-- **Entrega 2 (actual):** **MENÚ PRINCIPAL** con autenticación de usuarios, argumentos de ejecución, permisos por perfil y nuevas funcionalidades.
+- **Entrega 2:** **MENÚ PRINCIPAL** con autenticación de usuarios, argumentos de ejecución, permisos por perfil, matrices, juego y operaciones de texto.
+- **Entrega 3 (actual):** índice invertido paralelo con `pthread` y semáforos; juego multijugador mediante sockets TCP. Las opciones anteriores siguen disponibles.
 
 ### Funcionalidades del MENÚ PRINCIPAL
 
@@ -25,13 +26,14 @@ Al iniciar, el sistema autentica al usuario con `-u` y `-p`. La interfaz muestra
 | Opción | Funcionalidad | Descripción |
 |---|---|---|
 | 0 | Salir | Cierra la sesión. |
-| 1 | Administración de usuarios y perfiles | **Solo perfil ADMIN.** Ejecuta, mediante llamadas a sistema (`fork` + `execv` + `waitpid`), el programa `bin/admin` de la Entrega 1. |
+| 1 | Administración de usuarios y perfiles | Exige permiso 1 y el perfil indicado por `ADMIN_PERFIL` (`ADMIN` por defecto). Ejecuta, mediante llamadas a sistema (`fork` + `execv` + `waitpid`), el programa `bin/admin` de la Entrega 1. |
 | 2 | Multiplicar matrices NxM | Pide las rutas de A y B y el separador, y ejecuta el programa aparte `bin/multi` (ver más abajo). |
-| 3 | Juego | Ejecuta el servidor y los clientes del juego (ver sección 1.2). |
+| 3 | Juego | Permite iniciar el servidor o conectarse como cliente en esta terminal (ver sección 1.2). |
 | 4 | ¿Es palíndromo? | Permite escribir un texto y elegir **1) Validar** o **2) Cancelar**. Ignora mayúsculas, espacios, signos y tildes. |
 | 5 | Calcular f(x) = x*x + 2x + 8 | Pide x (número real) y muestra el cálculo paso a paso. Tiene opción **VOLVER**. |
 | 6 | Conteo sobre texto | Cuenta vocales, consonantes, caracteres especiales y palabras del archivo indicado con **`-f`**. Tiene opción **VOLVER**. |
 | 7 | Conteo sobre archivo | Pide la ruta de un archivo y realiza el mismo conteo de la opción 6. |
+| 8 | Crear índice invertido | Procesa los libros `.txt` de `LIBROS_DIR` con `N_THREADS` workers y genera índice y mapeo de IDs. |
 
 ### Permisos por perfil
 
@@ -39,12 +41,12 @@ Los permisos se leen desde `PERFILES.txt`. Cada perfil indica qué opciones del 
 
 | Perfil | Opciones permitidas |
 |---|---|
-| `ADMIN` | 0, 1, 2, 3, 4, 5, 6, 7 |
-| `GENERAL` | 0, 2, 3, 4, 5, 6, 7 |
+| `ADMIN` | 0, 1, 2, 3, 4, 5, 6, 7, 8 |
+| `GENERAL` | 0, 2, 3, 4, 5, 6, 7, 8 |
 
 Los perfiles se crean, listan y eliminan desde la opción 1 → Gestión de Perfiles.
 
-Si un usuario elige una opción que su perfil no tiene, el sistema muestra **ACCESO DENEGADO**. Además, la opción 1 es siempre exclusiva del perfil `ADMIN` (`ADMIN_PERFIL` en el `.env`), aunque otro perfil la tenga en su lista.
+Si un usuario elige una opción que su perfil no tiene, el sistema muestra **ACCESO DENEGADO**. La opción 1 exige además que el nombre del perfil coincida con `ADMIN_PERFIL` (`ADMIN` por defecto), aunque otro perfil tenga el permiso 1 en su lista.
 
 ### Lectura y escritura de structs
 
@@ -69,13 +71,15 @@ struct Usuario {                  // 116 bytes
     char perfil[20];
 };
 
-struct Perfil {                   // 28 bytes
+struct Perfil {                   // 29 bytes
     char nombre[20];
-    bool opciones[8];             // opciones[i] = true si el perfil puede usar la opcion i
+    bool opciones[9];             // opciones[i] = true si el perfil puede usar la opcion i (0..8)
 };
 ```
 
 Por lo tanto, `USUARIOS.txt` y `PERFILES.txt` son **archivos binarios** (mantienen los nombres que pide el enunciado) y no se editan a mano: se modifican desde la opción 1. Al cargarlos, el sistema verifica que el tamaño del archivo sea múltiplo del tamaño del struct; si no lo es (archivo dañado o con formato antiguo), muestra un error en vez de cargar datos corruptos.
+
+El formato binario **no cifra las contraseñas**: `Usuario.password` se guarda en claro dentro del registro. Las credenciales incluidas son solo de prueba; no usar contraseñas reales.
 
 Largos máximos: nombre 49 caracteres; username, password y perfil 19 caracteres.
 
@@ -286,84 +290,76 @@ Cada número se muestra **sin ceros innecesarios** (`3.25`, no `3.250000`) y red
 | `imprimirMatriz` | Muestra una matriz alineada, con su título y dimensiones |
 | `quitarEspacios`, `mostrarSeparador` | Auxiliares: limpiar espacios y mostrar el separador en los mensajes |
 
-### 1.2 Juego multiplayer por sockets
+### 1.2 Juego multijugador por sockets
 
-El juego **BAJO / MEDIO / ALTO** es un juego de dos equipos que se comunica por **sockets TCP**. El servidor corre en un proceso; cada cliente corre en otro. Los clientes se conectan al servidor, que mantiene el estado global de la partida y coordina los turnos.
+`BAJO / MEDIO / ALTO` usa arquitectura cliente-servidor: cada jugador ejecuta `bin/cliente` y se conecta por TCP a `bin/servidor`. El estado `Juego` se declara en `include/juego.h`; las reglas están implementadas en `src/juego.cpp`. El servidor valida acciones, decide turnos y envía una pantalla específica a cada jugador.
 
-#### 1.2.1 Arquitectura
-
-```
-clientes -> sockets TCP -> servidor -> estado compartido del juego (Juego)
-   │                           │
-   │ envia lineas de texto     │ mutex + snapshot
-   │ recibe pantallas          │ difunde pantalla_para(snapshot, id) a cada uno
+```text
+clientes → sockets TCP → servidor (poll, ciclo único) → estado Juego
+                             │
+                             ├─ buffer de entrada y cola de salida por cliente
+                             └─ log de eventos
 ```
 
-- **Clientes** (`src/cliente.cpp`, `bin/cliente`): se conectan al servidor, piden el nombre por consola, envían líneas de texto (acciones) y muestran las pantallas que reciben. No conocen el estado del juego: solo leen lo que el servidor les manda.
-- **Servidor** (`src/servidor.cpp`, `bin/servidor`): atiende a cada cliente en un **hilo** independiente. Mantiene **una sola instancia** de `Juego` (`include/juego.h`) protegida por un `std::mutex`.
-- **Estado compartido** (`include/juego.h`): la lógica pura del juego. Cada acción de un cliente se procesa **bajo el mutex**; se toma una **copia (snapshot)** del estado y se **difunde fuera del lock** a todos los clientes conectados, cada uno con su propia pantalla. Así dos acciones concurrentes nunca se pisan y cada difusión refleja exactamente el resultado de una acción.
-- **Protocolo**: texto por TCP. El cliente envía **el nombre** como primera línea, luego una línea por acción. El servidor responde con la pantalla completa terminada en `\n<<<FIN>>>\n`, para que el cliente sepa dónde termina un mensaje (TCP es un flujo de bytes, no de mensajes).
+El servidor usa un único ciclo `poll()` con sockets no bloqueantes. Procesa los mensajes en orden y mantiene el estado en ese ciclo; no crea un hilo por cliente ni necesita un mutex para `Juego`. Conserva los bytes pendientes de entrada/salida de cada conexión, de modo que líneas TCP parciales y envíos parciales no mezclan pantallas. El cliente usa `select()` para leer teclado y socket. Primera línea enviada: nombre; siguientes líneas: acciones. Cada pantalla recibida termina en `<<<FIN>>>` y el cliente quita ese delimitador antes de mostrarla.
 
-**Mecanismos de sistemas operativos aplicados:**
+#### Reglas
 
-- **Sockets** (`socket`, `bind`, `listen`, `accept`, `connect`, `send`, `recv`, `shutdown`, `close`).
-- **Hilos** (`std::thread`, uno por cliente) y **sincronización** (`std::mutex`).
-- **Variables de entorno**: `LOG_FILE` (obligatoria), `PORT`, `BIND_ADDR` (servidor), `HOST`, `PORT` (cliente).
-- **Archivos**: log de eventos (`LOG_FILE`), abierto en modo append y protegido por un mutex propio.
-- **Detección de desconexiones**: `recv` devuelve 0 o error; el servidor registra la desconexión y, si la partida estaba en curso, la termina según las reglas.
-- **Cierre controlado**: al terminar la partida, el servidor cierra el socket de escucha, hace `shutdown` de todos los clientes, `join` de los hilos y cierra el log.
+- **Participantes:** mínimo y máximo **4 jugadores**, repartidos en exactamente **2 equipos** de **2** (`EquipoA` y `EquipoB`). El primero que ingresa es el **host**. La sala informa cuántos jugadores hay (`1/4` a `3/4`) y empieza automáticamente al ingresar el cuarto. Se rechazan conexiones adicionales.
+- **Equipos y turnos:** los equipos y rivales se sortean. Cada ronda tiene cuatro turnos: una pareja rival juega seguida de la otra. El equipo cuya pareja va primero se sortea al inicio y se mantiene; los emparejamientos pueden cambiar entre rondas. En cada pareja actúa primero el jugador de menor ID. Solo el jugador del turno puede elegir; los demás ven a quién esperan.
+- **Acciones:** `1`/`BAJO`, `2`/`MEDIO` o `3`/`ALTO` (sin importar mayúsculas). El host puede escribir `RONDAS <n>` **antes** del inicio, con `1 ≤ n ≤ 50`; por defecto son **5** rondas. Una acción inválida o fuera de turno se rechaza y el error se envía solo a quien la escribió.
+- **Puntos:** cada jugador aporta a su equipo según su jugada contra su rival. `BAJO` frente a `ALTO` obtiene **5** y `ALTO` obtiene **0**. En las demás combinaciones cada uno obtiene el valor de su jugada: `BAJO=1`, `MEDIO=2`, `ALTO=3`. Por ejemplo, `ALTO` frente a `ALTO` da 3 a cada jugador.
+- **Final:** tras completar las rondas gana el equipo con más puntos; si empatan, se informa empate. Si alguien se desconecta durante una partida activa, esta termina con los puntos acumulados y un empate favorece al equipo del host. En espera, una desconexión libera la plaza; si sale el host, el siguiente jugador pasa a serlo. El servidor envía `FIN` a los conectados y cierra escucha, conexiones y log.
+- **Límites de protocolo:** nombre de hasta **16 caracteres Unicode** (se limpian caracteres de control); cada línea de entrada acepta hasta **128 bytes** antes del salto de línea. Un cliente que no envía nombre dentro de **5 segundos** recibe error y se desconecta.
 
-#### 1.2.2 Reglas del juego
+#### Inicio desde el menú
 
-- **Jugadores:** exactamente **4** (2 por equipo). El primero en conectarse es el **host**.
-- **Equipos:** **2 equipos** (`EquipoA` y `EquipoB`), asignados al azar al empezar. Cada jugador tiene un **rival** del otro equipo, también sorteado.
-- **Turnos:** cada ronda tiene **4 turnos**. Las parejas (rivales) actúan una después de la otra; la **pareja que va primero se sortea al empezar la partida** y queda fija. Dentro de cada pareja actúa primero el jugador de **menor `id`**. Solo el jugador del turno puede elegir; el resto ve `Esperando a X...`. El servidor **rechaza** acciones fuera de turno.
-- **Acciones permitidas:**
-  - `1` o `BAJO`, `2` o `MEDIO`, `3` o `ALTO`: la jugada de la ronda.
-  - `RONDAS <n>`: **solo el host**, **solo antes de empezar**, con `1 ≤ n ≤ 50`.
-  - Cualquier otra cosa es rechazada con un mensaje de error que **solo ve quien la envió**.
-- **Puntajes (por ronda, contra el rival):**
-  - `BAJO` vs `ALTO`: el `BAJO` gana **5** puntos; el `ALTO` gana **0**.
-  - `ALTO` vs `BAJO`: el `ALTO` gana **0**; el `BAJO` gana **5**.
-  - En cualquier otro caso, cada jugador gana el valor de su jugada: `BAJO`=1, `MEDIO`=2, `ALTO`=3. En particular, `ALTO` vs `ALTO` da **3 a cada uno**.
-- **Condición de inicio:** la partida empieza **automáticamente** al conectarse el **4º jugador**. Mientras tanto, el servidor informa a los conectados cuántos faltan y el host puede cambiar las rondas.
-- **Condición de término:**
-  - Se completan las `RONDAS` configuradas. Gana el equipo con más puntos; si empatan, **empate**.
-  - Alguien se desconecta en medio de la partida: la partida **termina** y gana el equipo con más puntos; si empatan, gana el equipo del **host**.
-- **Resultado:** al terminar, el servidor envía a todos los conectados una pantalla de `FIN` con el equipo ganador y los puntajes finales, y cierra la partida.
+En la opción **3**, elegir **1) Iniciar servidor** o **2) Conectarse como cliente**. Cada elección ejecuta `JUEGO_SERVIDOR_BIN` o `JUEGO_CLIENTE_BIN` con `fork` + `execv` + `waitpid` y ocupa esa terminal hasta finalizar. Abrir otras **cuatro terminales** y elegir cliente en cada una, o ejecutar `./bin/cliente` directamente. No se abren ventanas de terminal automáticamente. Los comandos manuales están en [2.5](#25-ejecutar-el-juego-en-cinco-terminales).
 
-#### 1.2.3 Cómo se ejecuta
+#### Log
 
-El servidor y los clientes se compilan con `make` (produce `bin/servidor` y `bin/cliente`). **La opción 3 del menú principal** los lanza: el menú crea el servidor con `fork` + `execv` (`SERVIDOR_BIN` del `.env`) y luego crea un cliente por jugador (`CLIENTE_BIN`). La terminal del menú queda para el servidor y los clientes se abren en terminales aparte (o según lo indique la implementación de la opción 3).
+`LOG_FILE` es obligatorio **solo para el servidor**. Se abre en modo append; si falta o no se puede escribir, el servidor muestra error y no inicia la partida. No puede coincidir con los archivos de usuarios, perfiles, índice o mapeo, ni ubicarse dentro de `LIBROS_DIR`; se comprueban también alias por enlaces. Cada línea tiene `fecha y hora;jugador;equipo;evento[;detalle]`; `-` indica dato aún no aplicable. Ejemplo de formato:
 
-Para ejecutarlos **manualmente** (útil para probar), ver sección 2.4.
-
-#### 1.2.4 Archivo de log
-
-El servidor escribe un archivo de log con las acciones relevantes. La ruta **debe** venir de la variable de entorno `LOG_FILE`; si no está definida, el servidor **no arranca** (requisito de la entrega: el nombre del archivo no debe estar escrito en el código). El formato es `fecha;hora;jugador;equipo;accion[;detalle]`, con `;` como separador:
-
-```
-2026-10-20 18:21:10;Ana;EquipoA;CONECTA
-2026-10-20 18:21:15;Maria;EquipoB;CONECTA
-2026-10-20 18:22:03;Ana;EquipoA;ELIGE;ALTO
-2026-10-20 18:22:03;Maria;EquipoB;TURNO;ronda=1
-2026-10-20 18:25:42;Maria;EquipoB;RONDA_RESUELTA;BAJO->5pts
-2026-10-20 18:27:11;;;FIN_PARTIDA;EquipoA
+```text
+2026-10-20 18:21:10;Ana;-;CONECTA
+2026-10-20 18:21:15;Ana;EquipoA;ASIGNA_EQUIPO
+2026-10-20 18:22:03;-;-;INICIO_PARTIDA;rondas=1
+2026-10-20 18:22:04;Ana;EquipoA;ELIGE;MEDIO,ronda=1
+2026-10-20 18:22:07;Ana;EquipoA;RONDA_RESUELTA;ronda=1,puntos=2,total=2,Ronda anterior: tú MEDIO, rival MEDIO -> 2 pts
+2026-10-20 18:22:08;-;-;FIN_PARTIDA;ganador=EMPATE,EquipoA=4,EquipoB=4
 ```
 
-Eventos registrados como mínimo: `CONECTA`, `INICIO_PARTIDA`, `TURNO`, `ELIGE`, `RONDA_RESUELTA`, `FIN_PARTIDA`, `DESCONECTA`, `ERROR_CONEXION`.
+Eventos: `CONECTA`, `ASIGNA_EQUIPO`, `INICIO_PARTIDA`, `TURNO`, `RONDAS` (si se configura), `ELIGE`, `RONDA_RESUELTA`, `ESTADO`, `FIN_PARTIDA`, `DESCONECTA` y `ERROR_CONEXION` cuando se intenta entrar a una sala llena. El registro de cada ronda incluye puntos ganados y total; `FIN_PARTIDA` incluye ganador y puntajes de ambos equipos.
 
-#### 1.2.5 Funciones principales
+### 1.3 Índice invertido paralelo
 
-| Archivo | Función / struct | Responsabilidad |
-|---|---|---|
-| `include/juego.h` | `Juego` (struct) | Estado completo y copiable de la partida (snapshot). |
-| `include/juego.h` | `agregar_jugador`, `remover_jugador`, `procesar_accion` | Mutan el estado; devuelven `Resultado{ok, mensaje}`. |
-| `include/juego.h` | `pantalla_para`, `ids_conectados`, `juego_terminado` | Solo lectura; se usan para difundir. |
-| `src/servidor.cpp` | `main` | `socket`/`bind`/`listen`/`accept`, un hilo por cliente, cierre controlado. |
-| `src/servidor.cpp` | `manejar_conexion`, `manejar_mensaje`, `manejar_desconexion` | Los 3 eventos de red; llaman a `juego.h` bajo mutex y difunden el snapshot. |
-| `src/servidor.cpp` | `Log` | Escribe `LOG_FILE` con mutex propio. |
-| `src/cliente.cpp` | `main` | `connect`, `select` sobre stdin y socket, protocolo `<<<FIN>>>`. |
+La opción **8** busca recursivamente archivos regulares `.txt` bajo `LIBROS_DIR`. Primero comprueba que la carpeta existe, se puede recorrer y contiene libros legibles. Ordena sus **rutas relativas** y asigna IDs consecutivos desde 1; dos libros llamados igual en géneros distintos reciben IDs distintos.
+
+```text
+LIBROS_DIR → cola compartida → pthread workers → conteos por libro → índice único
+                    │                │                     │
+              semáforo de         semáforo de         semáforo de
+              trabajo disponible  extracción          integración
+```
+
+`N_THREADS` workers toman cada libro una sola vez de la cola. Un semáforo cuenta trabajo disponible; otro protege sacar de la cola. Cada worker cuenta palabras en un mapa local **fuera** de esa sección crítica y combina su conteo bajo un tercer semáforo que protege el índice. Se inserta una señal de fin por worker; el menú espera todos los `pthread_join` antes de escribir. Así el índice final contiene una sola fila por palabra y conteos por libro, independientemente de qué worker procesó cada uno.
+
+La normalización del índice convierte letras latinas a minúsculas, elimina tildes comunes (`á`→`a`, `ñ`→`n`), conserva dígitos y separa por signos. Por ejemplo, `¡NiÑO, niño!` se cuenta como dos apariciones de `nino`. Un libro vacío conserva su ID en el mapeo, aunque no agrega palabras al índice.
+
+**Archivos de salida:**
+
+```text
+# INDICE_INVERTIDO_PATH — palabra;(id,cantidad);...
+nino;(1,2);(7,5)
+
+# MAPEO_LIBROS_PATH — id;ruta relativa a LIBROS_DIR
+1;aventura/huckleberry_finn_twain.txt
+7;biografia/vida_de_frederick_douglass.txt
+```
+
+Las filas anteriores ilustran **solo el formato**; IDs y conteos son ejemplos. Palabras e IDs se ordenan para dar salida reproducible con 1 o varios workers. Los resultados se escriben en archivos temporales vecinos y se publican tras completar todos los workers; si falla la publicación del índice, se intenta restaurar el mapeo anterior.
+
+`N_THREADS` debe ser entero positivo y como máximo **256**. Además, para `L` libros debe cumplir `N_THREADS ≤ min(256, max(4, 4×L))`; con los 63 libros incluidos, el máximo operativo es 252. Las rutas de salida deben ser distintas y tener **carpetas padre existentes y escribibles**. No pueden estar dentro de `LIBROS_DIR`, coincidir con libros o con los archivos binarios de usuarios/perfiles, ni ser enlaces simbólicos. `N_THREADS` y ambas rutas son obligatorias al elegir opción 8. Comandos en [2.4](#24-crear-el-índice).
 
 ### Carpeta de libros (`data/LIBROS`)
 
@@ -383,128 +379,157 @@ Fuente: Project Gutenberg (dominio público).
 
 ---
 
-## 2. Cómo se debe ejecutar
+## 2. Instalación, ejecución y pruebas
 
-Requisitos: **Linux** (o WSL en Windows), `g++` con soporte C++17 y `make`.
+### 2.1 Requisitos y preparación
 
-> Los ejecutables ya vienen **compilados** en `bin/` (`SistOpe`, `admin`, `multi`, `servidor`, `cliente`). Solo hace falta recompilar si se modifica el código.
-
-### 2.1 Clonar
+Usar **Linux o WSL**, `g++` con C++17, GNU `make`, Bash y Python 3 para las pruebas. Ejecutar desde la **raíz del proyecto**, porque las rutas relativas de `.env` y los datos se interpretan desde el directorio de trabajo.
 
 ```bash
 git clone https://github.com/CristobalEsp01/bash-tardos.git
 cd bash-tardos
 cp .env.example .env
+make
 ```
 
-El archivo `.env` **no se sube al repositorio** (está en `.gitignore`). Se crea copiando la plantilla `.env.example`, que contiene todas las variables con sus valores recomendados. Si el `.env` no existe, el sistema muestra una advertencia y usa esos mismos valores por defecto.
+`make` **genera desde el código fuente** cinco ejecutables: `bin/SistOpe`, `bin/admin`, `bin/multi`, `bin/servidor` y `bin/cliente`. No se presupone que haya binarios precompilados. `make clean` elimina objetos y esos ejecutables; después ejecutar `make` otra vez. `.env` es local y no se sube; `.env.example` incluye valores de ejemplo para las variables requeridas de cada tarea.
 
-### 2.2 Compilar
-
-```bash
-make          # compila bin/SistOpe, bin/admin, bin/multi, bin/servidor y bin/cliente
-make clean    # borra objetos y ejecutables
-```
-
-### 2.3 Ejecutar
-
-Siempre desde la **carpeta raíz** del proyecto, porque las rutas del `.env` son relativas a ella:
+### 2.2 Menú principal
 
 ```bash
 ./bin/SistOpe -u <usuario> -p <password> [-f <archivo.txt>]
 ```
 
-| Argumento | Obligatorio | Descripción |
-|---|---|---|
-| `-u` | Sí | Nombre de usuario (`username` en `USUARIOS.txt`). |
-| `-p` | Sí | Password del usuario. |
-| `-f` | No | Archivo de texto que usa la opción 6 (Conteo sobre texto). |
-
-Ejemplos:
+`-u` y `-p` son obligatorios; `-f` proporciona el archivo que usa la opción **6**. Ejemplos:
 
 ```bash
-# Usuario ADMIN, contando un libro
-./bin/SistOpe -u MaxAR -p 1001 -f "data/LIBROS/drama/hamlet_shakespeare.txt"
-
-# Usuario GENERAL (no puede usar la opción 1)
-./bin/SistOpe -u maria -p 1002 -f "/home/usuario/archivo.txt"
-
-# Compilar y ejecutar en un paso
+./bin/SistOpe -u MaxAR -p 1001 -f data/LIBROS/drama/hamlet_shakespeare.txt
+./bin/SistOpe -u maria -p 1002
 make run ARGS='-u MaxAR -p 1001 -f data/LIBROS/fantasia/don_quijote_cervantes_es.txt'
 ```
 
-Usuarios de prueba (guardados en `data/USUARIOS.txt`):
+Los datos de prueba actuales contienen `MaxAR / 1001` (ADMIN), `maria / 1002` y `pedro / 1003` (GENERAL). Con `ADMIN_PERFIL=ADMIN`, ADMIN puede usar opciones **0–8** y GENERAL puede usar **0 y 2–8**. El menú muestra `[sin permiso]` y rechaza una elección no autorizada.
 
-| Username | Password | Perfil |
-|---|---|---|
-| `MaxAR` | `1001` | ADMIN |
-| `maria` | `1002` | GENERAL |
-| `pedro` | `1003` | GENERAL |
+### 2.3 Regresión de opciones anteriores
 
-Si faltan `-u` o `-p`, o si las credenciales son incorrectas, el sistema no inicia y muestra un mensaje. Por seguridad, el mensaje no indica si falló el usuario o la password.
-
-### 2.4 Ejecutar el juego manualmente
-
-La opción 3 del menú lanza el servidor y los clientes. Para probarlos por separado:
+Tras compilar, entrar con ADMIN y GENERAL. Comprobar salida **0**, administración **1** (ADMIN; usar copias de datos si se modifican perfiles), matrices **2**, juego **3**, palíndromo **4**, función `f(x)` **5**, conteo de `-f` **6** y conteo de archivo **7**. Para probar matrices sin el menú:
 
 ```bash
-# Terminal 1: servidor (LOG_FILE es obligatoria)
-LOG_FILE="data/juego.log" PORT=5000 BIND_ADDR=0.0.0.0 ./bin/servidor
+./bin/multi "$PWD/data/test_matrices/A.txt" "$PWD/data/test_matrices/B.txt" "#" MaxAR ADMIN
+```
 
-# Terminales 2..5: un cliente por jugador
+`multi` necesita rutas absolutas al ejecutarse directamente; el menú convierte las rutas relativas que se ingresan en la opción 2.
+
+### 2.4 Crear el índice
+
+Con `.env` copiado de la plantilla y `make` ejecutado:
+
+```bash
+./bin/SistOpe -u MaxAR -p 1001
+# Elegir 8: Crear indice invertido
+# Salida esperada: "Utilizando 4 threads; 63 libros procesados."
+#                 "Tarea finalizada con éxito."
+
+head -n 3 data/mapeo_libros.txt
+grep -E '^(the|and);' data/indice_invertido.idx
+grep '^1;' data/mapeo_libros.txt
+```
+
+`head` muestra IDs y rutas relativas; `grep` busca dos palabras del índice y la ruta del libro 1. Los nombres de salida se toman de `INDICE_INVERTIDO_PATH` y `MAPEO_LIBROS_PATH`; si se cambian en `.env`, usar esas rutas al inspeccionar. Para comparar otra cantidad de workers, exportar `N_THREADS=1` o ejecutarlo en el proceso:
+
+```bash
+N_THREADS=1 ./bin/SistOpe -u MaxAR -p 1001
+# Elegir 8 de nuevo: salida esperada "Utilizando 1 threads; 63 libros procesados."
+```
+
+Las rutas y `N_THREADS` no tienen valor por defecto: sin `.env`, definirlas en el entorno del proceso antes de elegir 8.
+
+### 2.5 Ejecutar el juego en cinco terminales
+
+También se puede usar la opción **3** del menú en cada terminal. Manualmente, iniciar servidor y luego cuatro clientes:
+
+```bash
+# Terminal 1
+LOG_FILE=data/juego.log PORT=5000 BIND_ADDR=127.0.0.1 ./bin/servidor
+
+# Terminal 2
+HOST=127.0.0.1 PORT=5000 ./bin/cliente
+# Terminal 3
+HOST=127.0.0.1 PORT=5000 ./bin/cliente
+# Terminal 4
+HOST=127.0.0.1 PORT=5000 ./bin/cliente
+# Terminal 5
 HOST=127.0.0.1 PORT=5000 ./bin/cliente
 ```
 
-Al conectarse el 4º cliente, la partida empieza sola. El **host** (primer conectado) puede escribir `RONDAS <n>` antes de que llegue el 4º. Al terminar la partida, el servidor cierra la conexión y los clientes salen.
+Cada cliente pide un nombre. Antes de conectar el cuarto, el primero puede enviar `RONDAS 1` para una partida breve. Luego, quien vea `Es tu turno` envía `1`, `2` o `3`. Salida esperada del servidor al iniciar: `[servidor] escuchando en 127.0.0.1:5000`; al acabar: `[servidor] cerrado.`. Los clientes reciben `=== FIN ===` y terminan cuando se cierra el socket. Revisar eventos con `tail -n 20 data/juego.log`.
+
+Para jugar en otra máquina, configurar `BIND_ADDR` con una IPv4 de escucha del servidor y `HOST` con la IPv4 alcanzable de esa máquina; ambos deben usar el mismo `PORT`.
+
+### 2.6 Pruebas automatizadas
+
+Ejecutar en Linux/WSL desde la raíz. El script de índice compila su propio ejecutable temporal; las pruebas TCP usan los binarios generados por `make`.
+
+```bash
+make
+bash tests/run_indice.sh
+bash tests/run_indice.sh --corpus
+bash tests/run_juego.sh
+python3 tests/test_juego_tcp.py
+python3 tests/test_cliente_tcp.py
+```
+
+`--corpus` compara el índice de los 63 libros con **1 y 4 workers**. `test_juego.cpp` comprueba reglas sin red; las pruebas Python cubren partida TCP, desconexiones, log y ensamblado de pantallas del cliente. Para regresión manual de Entrega 2, seguir [2.3](#23-regresión-de-opciones-anteriores).
 
 ### Estructura del proyecto
 
-> Para colaborar en el código, seguir las reglas de [`docs/convenciones.md`](docs/convenciones.md).
+Seguir las reglas de [`docs/convenciones.md`](docs/convenciones.md).
 
-```
-bin/        ejecutables compilados (SistOpe, admin, multi, servidor, cliente)
-data/       USUARIOS.txt, PERFILES.txt, test_matrices/, LIBROS/
-include/    headers (.h), incluido juego.h
-src/        código fuente (.cpp), incluidos servidor.cpp y cliente.cpp
-docs/       enunciados de las entregas y convenciones del grupo
-.env.example plantilla de variables de entorno (copiar a .env)
-Makefile
+```text
+bin/          cinco ejecutables generados por make
+data/         usuarios/perfiles binarios, matrices de prueba, LIBROS/
+include/      headers, incluidos juego.h e indiceInvModule.h
+src/          menú, módulos, juego.cpp, servidor y cliente
+tests/        pruebas de índice y juego TCP
+docs/         enunciados y convenciones
+.env.example  plantilla de configuración
+Makefile      compilación de los cinco programas
 ```
 
 ---
 
-## 3. Descripción de las variables de entorno
+## 3. Variables de entorno
 
-El sistema lee su configuración desde el archivo `.env` en la raíz del proyecto (se crea con `cp .env.example .env`). Si una variable también está definida en el entorno del sistema (por ejemplo `export USER_FILE=...`), esa tiene prioridad. Si falta una variable, se usa el valor por defecto y se muestra una advertencia. **Excepción:** `LOG_FILE` es obligatoria para el servidor del juego; si falta, el servidor no arranca.
+`cargarConfiguracion()` lee primero los valores del **entorno del proceso**, después `.env` y, **solo para parámetros opcionales**, los valores por defecto del programa. Un valor definido como cadena vacía también tiene prioridad: la tarea que lo necesita lo rechaza si no es válido. `.env.example` muestra una configuración completa; copiarlo a `.env` o exportar las variables requeridas antes de ejecutar cada tarea. Las rutas relativas se resuelven desde el directorio de trabajo.
 
-| Variable | Descripción | Valor por defecto |
+| Variable | Uso | Por defecto |
 |---|---|---|
-| `USER_FILE` | Archivo donde se guardan los usuarios (struct `Usuario`). | `data/USUARIOS.txt` |
-| `PERFIL_FILE` | Archivo donde se guardan los perfiles y sus opciones permitidas (struct `Perfil`). | `data/PERFILES.txt` |
-| `ADMIN_BIN` | Ejecutable de Administración de usuarios y perfiles (opción 1). | `bin/admin` |
-| `MULTI_BIN` | Ejecutable multiplicador de matrices (opción 2). | `bin/multi` |
-| `LIBROS_DIR` | Carpeta con los libros `.txt` (se sugiere en la opción 7). | `data/LIBROS` |
-| `ADMIN_PERFIL` | Nombre del perfil con acceso exclusivo a la opción 1. | `ADMIN` |
-| `JUEGO_SERVIDOR_BIN` | Ejecutable del servidor del juego (opción 3). | `bin/servidor` |
-| `JUEGO_CLIENTE_BIN` | Ejecutable del cliente del juego (opción 3). | `bin/cliente` |
-| `PORT` | Puerto TCP del servidor (y del cliente, si no se indica `PORT` en su entorno). | `5000` |
-| `BIND_ADDR` | Dirección de escucha del servidor. | `0.0.0.0` |
-| `HOST` | Host al que se conecta el cliente. | `127.0.0.1` |
-| `LOG_FILE` | Archivo de log del servidor. **Obligatoria** para el servidor.
+| `USER_FILE` | Archivo binario de usuarios. | `data/USUARIOS.txt` |
+| `PERFIL_FILE` | Archivo binario de perfiles y permisos. | `data/PERFILES.txt` |
+| `ADMIN_BIN` | Ejecutable de administración (opción 1). | `bin/admin` |
+| `MULTI_BIN` | Ejecutable de matrices (opción 2). | `bin/multi` |
+| `JUEGO_SERVIDOR_BIN` | Ejecutable que el menú lanza al iniciar servidor (opción 3). | `bin/servidor` |
+| `JUEGO_CLIENTE_BIN` | Ejecutable que el menú lanza al conectarse (opción 3). | `bin/cliente` |
+| `LIBROS_DIR` | Carpeta de libros `.txt` (sugerida en opción 7; entrada de opción 8). | `data/LIBROS` |
+| `ADMIN_PERFIL` | Nombre de perfil con acceso exclusivo a opción 1. | `ADMIN` |
+| `N_THREADS` | Workers del índice; entero positivo sujeto al límite descrito en [1.3](#13-índice-invertido-paralelo). **Obligatoria para opción 8.** | — |
+| `INDICE_INVERTIDO_PATH` | Ruta de salida del índice. **Obligatoria para opción 8.** | — |
+| `MAPEO_LIBROS_PATH` | Ruta de salida `id;ruta`. **Obligatoria para opción 8.** | — |
+| `LOG_FILE` | Archivo de eventos en modo append. **Obligatoria para servidor.** | — |
+| `HOST` | IPv4 literal de destino del cliente. | `127.0.0.1` |
+| `PORT` | Puerto TCP, entero entre **1 y 65535**, usado por servidor y clientes. | `5000` |
+| `BIND_ADDR` | IPv4 literal de escucha del servidor. | `0.0.0.0` |
 
-Ejemplo de `.env`:
+`HOST`, `PORT` y `BIND_ADDR` se validan antes de iniciar el proceso de juego correspondiente. `LOG_FILE` no bloquea el menú, el índice ni el cliente; `N_THREADS` y las dos rutas del índice no bloquean las otras opciones del menú. Las carpetas padre de los archivos de salida deben existir y permitir escritura; el programa no crea directorios faltantes.
 
+Ejemplo sin `.env`, usando valores del proceso para el índice:
+
+```bash
+N_THREADS=4 \
+INDICE_INVERTIDO_PATH=data/indice_invertido.idx \
+MAPEO_LIBROS_PATH=data/mapeo_libros.txt \
+./bin/SistOpe -u MaxAR -p 1001
+# Elegir opción 8
 ```
-USER_FILE=data/USUARIOS.txt
-PERFIL_FILE=data/PERFILES.txt
-ADMIN_BIN=bin/admin
-MULTI_BIN=bin/multi
-LIBROS_DIR=data/LIBROS
-ADMIN_PERFIL=ADMIN
-JUEGO_SERVIDOR_BIN=bin/servidor
-JUEGO_CLIENTE_BIN=bin/cliente
-PORT=5000
-BIND_ADDR=0.0.0.0
-HOST=127.0.0.1
-LOG_FILE=data/juego.log
-```
+
+Ejemplo de prioridad: si `.env` dice `PORT=5000`, `PORT=6000 ./bin/cliente` intenta conectarse al **6000**. Servidor y cliente lanzados desde el menú heredan el entorno y también leen `.env` desde la raíz.
