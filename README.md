@@ -27,7 +27,7 @@ Al iniciar, el sistema autentica al usuario con `-u` y `-p`. La interfaz muestra
 | 0 | Salir | Cierra la sesión. |
 | 1 | Administración de usuarios y perfiles | **Solo perfil ADMIN.** Ejecuta, mediante llamadas a sistema (`fork` + `execv` + `waitpid`), el programa `bin/admin` de la Entrega 1. |
 | 2 | Multiplicar matrices NxM | Pide las rutas de A y B y el separador, y ejecuta el programa aparte `bin/multi` (ver más abajo). |
-| 3 | Juego | Mensaje "en construcción". |
+| 3 | Juego | Ejecuta el servidor y los clientes del juego (ver sección 1.2). |
 | 4 | ¿Es palíndromo? | Permite escribir un texto y elegir **1) Validar** o **2) Cancelar**. Ignora mayúsculas, espacios, signos y tildes. |
 | 5 | Calcular f(x) = x*x + 2x + 8 | Pide x (número real) y muestra el cálculo paso a paso. Tiene opción **VOLVER**. |
 | 6 | Conteo sobre texto | Cuenta vocales, consonantes, caracteres especiales y palabras del archivo indicado con **`-f`**. Tiene opción **VOLVER**. |
@@ -79,7 +79,7 @@ Por lo tanto, `USUARIOS.txt` y `PERFILES.txt` son **archivos binarios** (mantien
 
 Largos máximos: nombre 49 caracteres; username, password y perfil 19 caracteres.
 
-### Programa multiplicador de matrices (`bin/multi`)
+### 1.1 Programa multiplicador de matrices (`bin/multi`)
 
 `multi` es un **programa independiente** (código en `src/matmul.cpp`). No forma parte del ejecutable del menú: el menú lo ejecuta como un proceso aparte.
 
@@ -286,6 +286,85 @@ Cada número se muestra **sin ceros innecesarios** (`3.25`, no `3.250000`) y red
 | `imprimirMatriz` | Muestra una matriz alineada, con su título y dimensiones |
 | `quitarEspacios`, `mostrarSeparador` | Auxiliares: limpiar espacios y mostrar el separador en los mensajes |
 
+### 1.2 Juego multiplayer por sockets
+
+El juego **BAJO / MEDIO / ALTO** es un juego de dos equipos que se comunica por **sockets TCP**. El servidor corre en un proceso; cada cliente corre en otro. Los clientes se conectan al servidor, que mantiene el estado global de la partida y coordina los turnos.
+
+#### 1.2.1 Arquitectura
+
+```
+clientes -> sockets TCP -> servidor -> estado compartido del juego (Juego)
+   │                           │
+   │ envia lineas de texto     │ mutex + snapshot
+   │ recibe pantallas          │ difunde pantalla_para(snapshot, id) a cada uno
+```
+
+- **Clientes** (`src/cliente.cpp`, `bin/cliente`): se conectan al servidor, piden el nombre por consola, envían líneas de texto (acciones) y muestran las pantallas que reciben. No conocen el estado del juego: solo leen lo que el servidor les manda.
+- **Servidor** (`src/servidor.cpp`, `bin/servidor`): atiende a cada cliente en un **hilo** independiente. Mantiene **una sola instancia** de `Juego` (`include/juego.h`) protegida por un `std::mutex`.
+- **Estado compartido** (`include/juego.h`): la lógica pura del juego. Cada acción de un cliente se procesa **bajo el mutex**; se toma una **copia (snapshot)** del estado y se **difunde fuera del lock** a todos los clientes conectados, cada uno con su propia pantalla. Así dos acciones concurrentes nunca se pisan y cada difusión refleja exactamente el resultado de una acción.
+- **Protocolo**: texto por TCP. El cliente envía **el nombre** como primera línea, luego una línea por acción. El servidor responde con la pantalla completa terminada en `\n<<<FIN>>>\n`, para que el cliente sepa dónde termina un mensaje (TCP es un flujo de bytes, no de mensajes).
+
+**Mecanismos de sistemas operativos aplicados:**
+
+- **Sockets** (`socket`, `bind`, `listen`, `accept`, `connect`, `send`, `recv`, `shutdown`, `close`).
+- **Hilos** (`std::thread`, uno por cliente) y **sincronización** (`std::mutex`).
+- **Variables de entorno**: `LOG_FILE` (obligatoria), `PORT`, `BIND_ADDR` (servidor), `HOST`, `PORT` (cliente).
+- **Archivos**: log de eventos (`LOG_FILE`), abierto en modo append y protegido por un mutex propio.
+- **Detección de desconexiones**: `recv` devuelve 0 o error; el servidor registra la desconexión y, si la partida estaba en curso, la termina según las reglas.
+- **Cierre controlado**: al terminar la partida, el servidor cierra el socket de escucha, hace `shutdown` de todos los clientes, `join` de los hilos y cierra el log.
+
+#### 1.2.2 Reglas del juego
+
+- **Jugadores:** exactamente **4** (2 por equipo). El primero en conectarse es el **host**.
+- **Equipos:** **2 equipos** (`EquipoA` y `EquipoB`), asignados al azar al empezar. Cada jugador tiene un **rival** del otro equipo, también sorteado.
+- **Turnos:** cada ronda tiene **4 turnos**. Las parejas (rivales) actúan una después de la otra; la **pareja que va primero se sortea al empezar la partida** y queda fija. Dentro de cada pareja actúa primero el jugador de **menor `id`**. Solo el jugador del turno puede elegir; el resto ve `Esperando a X...`. El servidor **rechaza** acciones fuera de turno.
+- **Acciones permitidas:**
+  - `1` o `BAJO`, `2` o `MEDIO`, `3` o `ALTO`: la jugada de la ronda.
+  - `RONDAS <n>`: **solo el host**, **solo antes de empezar**, con `1 ≤ n ≤ 50`.
+  - Cualquier otra cosa es rechazada con un mensaje de error que **solo ve quien la envió**.
+- **Puntajes (por ronda, contra el rival):**
+  - `BAJO` vs `ALTO`: el `BAJO` gana **5** puntos; el `ALTO` gana **0**.
+  - `ALTO` vs `BAJO`: el `ALTO` gana **0**; el `BAJO` gana **5**.
+  - En cualquier otro caso, cada jugador gana el valor de su jugada: `BAJO`=1, `MEDIO`=2, `ALTO`=3. En particular, `ALTO` vs `ALTO` da **3 a cada uno**.
+- **Condición de inicio:** la partida empieza **automáticamente** al conectarse el **4º jugador**. Mientras tanto, el servidor informa a los conectados cuántos faltan y el host puede cambiar las rondas.
+- **Condición de término:**
+  - Se completan las `RONDAS` configuradas. Gana el equipo con más puntos; si empatan, **empate**.
+  - Alguien se desconecta en medio de la partida: la partida **termina** y gana el equipo con más puntos; si empatan, gana el equipo del **host**.
+- **Resultado:** al terminar, el servidor envía a todos los conectados una pantalla de `FIN` con el equipo ganador y los puntajes finales, y cierra la partida.
+
+#### 1.2.3 Cómo se ejecuta
+
+El servidor y los clientes se compilan con `make` (produce `bin/servidor` y `bin/cliente`). **La opción 3 del menú principal** los lanza: el menú crea el servidor con `fork` + `execv` (`SERVIDOR_BIN` del `.env`) y luego crea un cliente por jugador (`CLIENTE_BIN`). La terminal del menú queda para el servidor y los clientes se abren en terminales aparte (o según lo indique la implementación de la opción 3).
+
+Para ejecutarlos **manualmente** (útil para probar), ver sección 2.4.
+
+#### 1.2.4 Archivo de log
+
+El servidor escribe un archivo de log con las acciones relevantes. La ruta **debe** venir de la variable de entorno `LOG_FILE`; si no está definida, el servidor **no arranca** (requisito de la entrega: el nombre del archivo no debe estar escrito en el código). El formato es `fecha;hora;jugador;equipo;accion[;detalle]`, con `;` como separador:
+
+```
+2026-10-20 18:21:10;Ana;EquipoA;CONECTA
+2026-10-20 18:21:15;Maria;EquipoB;CONECTA
+2026-10-20 18:22:03;Ana;EquipoA;ELIGE;ALTO
+2026-10-20 18:22:03;Maria;EquipoB;TURNO;ronda=1
+2026-10-20 18:25:42;Maria;EquipoB;RONDA_RESUELTA;BAJO->5pts
+2026-10-20 18:27:11;;;FIN_PARTIDA;EquipoA
+```
+
+Eventos registrados como mínimo: `CONECTA`, `INICIO_PARTIDA`, `TURNO`, `ELIGE`, `RONDA_RESUELTA`, `FIN_PARTIDA`, `DESCONECTA`, `ERROR_CONEXION`.
+
+#### 1.2.5 Funciones principales
+
+| Archivo | Función / struct | Responsabilidad |
+|---|---|---|
+| `include/juego.h` | `Juego` (struct) | Estado completo y copiable de la partida (snapshot). |
+| `include/juego.h` | `agregar_jugador`, `remover_jugador`, `procesar_accion` | Mutan el estado; devuelven `Resultado{ok, mensaje}`. |
+| `include/juego.h` | `pantalla_para`, `ids_conectados`, `juego_terminado` | Solo lectura; se usan para difundir. |
+| `src/servidor.cpp` | `main` | `socket`/`bind`/`listen`/`accept`, un hilo por cliente, cierre controlado. |
+| `src/servidor.cpp` | `manejar_conexion`, `manejar_mensaje`, `manejar_desconexion` | Los 3 eventos de red; llaman a `juego.h` bajo mutex y difunden el snapshot. |
+| `src/servidor.cpp` | `Log` | Escribe `LOG_FILE` con mutex propio. |
+| `src/cliente.cpp` | `main` | `connect`, `select` sobre stdin y socket, protocolo `<<<FIN>>>`. |
+
 ### Carpeta de libros (`data/LIBROS`)
 
 `data/LIBROS` contiene **más de 50 MB (≈ 62 MB, 63 libros)** en formato `.txt` (UTF-8), organizados por género. Se pueden usar en las opciones 6 y 7.
@@ -308,7 +387,7 @@ Fuente: Project Gutenberg (dominio público).
 
 Requisitos: **Linux** (o WSL en Windows), `g++` con soporte C++17 y `make`.
 
-> Los ejecutables ya vienen **compilados** en `bin/` (`SistOpe`, `admin`, `multi`). Solo hace falta recompilar si se modifica el código.
+> Los ejecutables ya vienen **compilados** en `bin/` (`SistOpe`, `admin`, `multi`, `servidor`, `cliente`). Solo hace falta recompilar si se modifica el código.
 
 ### 2.1 Clonar
 
@@ -323,7 +402,7 @@ El archivo `.env` **no se sube al repositorio** (está en `.gitignore`). Se crea
 ### 2.2 Compilar
 
 ```bash
-make          # compila bin/SistOpe, bin/admin y bin/multi
+make          # compila bin/SistOpe, bin/admin, bin/multi, bin/servidor y bin/cliente
 make clean    # borra objetos y ejecutables
 ```
 
@@ -364,15 +443,29 @@ Usuarios de prueba (guardados en `data/USUARIOS.txt`):
 
 Si faltan `-u` o `-p`, o si las credenciales son incorrectas, el sistema no inicia y muestra un mensaje. Por seguridad, el mensaje no indica si falló el usuario o la password.
 
+### 2.4 Ejecutar el juego manualmente
+
+La opción 3 del menú lanza el servidor y los clientes. Para probarlos por separado:
+
+```bash
+# Terminal 1: servidor (LOG_FILE es obligatoria)
+LOG_FILE="data/juego.log" PORT=5000 BIND_ADDR=0.0.0.0 ./bin/servidor
+
+# Terminales 2..5: un cliente por jugador
+HOST=127.0.0.1 PORT=5000 ./bin/cliente
+```
+
+Al conectarse el 4º cliente, la partida empieza sola. El **host** (primer conectado) puede escribir `RONDAS <n>` antes de que llegue el 4º. Al terminar la partida, el servidor cierra la conexión y los clientes salen.
+
 ### Estructura del proyecto
 
 > Para colaborar en el código, seguir las reglas de [`docs/convenciones.md`](docs/convenciones.md).
 
 ```
-bin/        ejecutables compilados (SistOpe, admin, multi)
+bin/        ejecutables compilados (SistOpe, admin, multi, servidor, cliente)
 data/       USUARIOS.txt, PERFILES.txt, test_matrices/, LIBROS/
-include/    headers (.h)
-src/        código fuente (.cpp)
+include/    headers (.h), incluido juego.h
+src/        código fuente (.cpp), incluidos servidor.cpp y cliente.cpp
 docs/       enunciados de las entregas y convenciones del grupo
 .env.example plantilla de variables de entorno (copiar a .env)
 Makefile
@@ -382,7 +475,7 @@ Makefile
 
 ## 3. Descripción de las variables de entorno
 
-El sistema lee su configuración desde el archivo `.env` en la raíz del proyecto (se crea con `cp .env.example .env`). Si una variable también está definida en el entorno del sistema (por ejemplo `export USER_FILE=...`), esa tiene prioridad. Si falta una variable, se usa el valor por defecto y se muestra una advertencia.
+El sistema lee su configuración desde el archivo `.env` en la raíz del proyecto (se crea con `cp .env.example .env`). Si una variable también está definida en el entorno del sistema (por ejemplo `export USER_FILE=...`), esa tiene prioridad. Si falta una variable, se usa el valor por defecto y se muestra una advertencia. **Excepción:** `LOG_FILE` es obligatoria para el servidor del juego; si falta, el servidor no arranca.
 
 | Variable | Descripción | Valor por defecto |
 |---|---|---|
@@ -392,6 +485,12 @@ El sistema lee su configuración desde el archivo `.env` en la raíz del proyect
 | `MULTI_BIN` | Ejecutable multiplicador de matrices (opción 2). | `bin/multi` |
 | `LIBROS_DIR` | Carpeta con los libros `.txt` (se sugiere en la opción 7). | `data/LIBROS` |
 | `ADMIN_PERFIL` | Nombre del perfil con acceso exclusivo a la opción 1. | `ADMIN` |
+| `JUEGO_SERVIDOR_BIN` | Ejecutable del servidor del juego (opción 3). | `bin/servidor` |
+| `JUEGO_CLIENTE_BIN` | Ejecutable del cliente del juego (opción 3). | `bin/cliente` |
+| `PORT` | Puerto TCP del servidor (y del cliente, si no se indica `PORT` en su entorno). | `5000` |
+| `BIND_ADDR` | Dirección de escucha del servidor. | `0.0.0.0` |
+| `HOST` | Host al que se conecta el cliente. | `127.0.0.1` |
+| `LOG_FILE` | Archivo de log del servidor. **Obligatoria** para el servidor.
 
 Ejemplo de `.env`:
 
@@ -402,4 +501,10 @@ ADMIN_BIN=bin/admin
 MULTI_BIN=bin/multi
 LIBROS_DIR=data/LIBROS
 ADMIN_PERFIL=ADMIN
+JUEGO_SERVIDOR_BIN=bin/servidor
+JUEGO_CLIENTE_BIN=bin/cliente
+PORT=5000
+BIND_ADDR=0.0.0.0
+HOST=127.0.0.1
+LOG_FILE=data/juego.log
 ```
